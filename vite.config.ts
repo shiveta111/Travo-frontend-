@@ -27,6 +27,7 @@ export default defineConfig(({ command }) => ({
     // Tailwind is not being actively used – do not remove them
     react(),
     tailwindcss(),
+    
   ],
   resolve: {
     alias: {
