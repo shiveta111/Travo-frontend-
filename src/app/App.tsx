@@ -51,6 +51,9 @@ import { AddRole }
 import { DepartmentManagement }
   from './user_and_role_management/DepartmentManagement';
 
+import { Countries } from './setting/Countries';
+import { States } from './setting/States';
+import { Cities } from './setting/Cities';
 
 import {
   useAuth
@@ -141,6 +144,15 @@ export default function App() {
         case 'departments':
           return <DepartmentManagement />;
 
+        case 'countries':
+          return <Countries />;
+        
+        case 'states':
+          return <States />;
+
+        case 'cities':
+          return <Cities />;
+        
         default:
 
           return (

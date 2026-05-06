@@ -31,6 +31,16 @@ const menuItems: MenuItem[] = [
       { id: 'add-user', label: 'User Management', icon: Users },
     ]
   },
+  {
+    icon: Shield,
+    label: 'Settings',
+    id: 'settings',
+    subItems: [
+      { id: 'countries', label: 'Countries', icon: Briefcase },
+      { id: 'states', label: 'States', icon: Shield },
+      { id: 'cities', label: 'Cities', icon: Users },
+    ]
+  },
   // More menu items can be added here
 ];
 
@@ -47,7 +57,7 @@ export function Sidebar({ activeModule, onModuleChange }: SidebarProps) {
   return (
     <aside className="w-64 bg-white border-r border-border h-full flex flex-col">
       <div className="p-6 border-b border-border">
-        <h1 className="text-primary">Travo AI</h1>
+        <h1 className="text-primary">DMC Hub Travo AI</h1>
       </div>
 
       <nav className="flex-1 p-4 overflow-y-auto">

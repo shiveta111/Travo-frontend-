@@ -1,19 +1,35 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Briefcase, Search, Edit2, X, Users, Building2, Filter,
   CheckCircle, AlertCircle, TrendingUp, Eye, Plus
 } from 'lucide-react';
+import { getActiveCountries, getActiveStatesByCountry, getActiveCitiesByState } from '../../api/location.api';
+import { getDepartments, newDepartment as createDepartmentApi, updateDepartment as updateDepartmentApi, deleteDepartment as deleteDepartmentApi } from '../../api/department.api';
 
 interface Department {
   id: number;
   name: string;
   description: string;
-  headOfDepartment: string;
-  employeeCount: number;
+  head_of_department: string;
+  employee_count: number;
   budget?: string;
-  location?: string;
-  status: 'ACTIVE' | 'INACTIVE';
-  createdDate: string;
+
+  // API fields
+  country?: string;
+  state?: string;
+  city?: string;
+
+  // Numeric fields
+  country_id: number;
+  state_id: number;
+  city_id: number;
+
+  country_name?: string;
+  state_name?: string;
+  city_name?: string;
+
+  status: number;
+  created_at: string;
 }
 
 export function DepartmentManagement() {
@@ -28,116 +44,227 @@ export function DepartmentManagement() {
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
+  // My Custome Code Start
+  const [allCountries, setAllCountries] = useState<any[]>([]);
+  const [allStates, setAllStates] = useState<any[]>([]);
+  const [allCities, setAllCities] = useState<any[]>([]);
+
+  const [editCountryId, setEditCountryId] = useState<number | null>(null);
+  const [editStates, setEditStates] = useState<any[]>([]);
+  const [editCities, setEditCities] = useState<any[]>([]);
+
+  const fetchStatesForEdit = async (countryId: number) => {
+    try {
+
+      const res = await getActiveStatesByCountry(countryId);
+
+      setEditStates(res.data || []);
+
+    } catch (error) {
+
+      console.error(error);
+      setEditStates([]);
+    }
+  };
+
+  const fetchCitiesForEdit = async (stateId: number) => {
+    try {
+
+      const res = await getActiveCitiesByState(stateId);
+
+      setEditCities(res.data || []);
+
+    } catch (error) {
+
+      console.error(error);
+      setEditCities([]);
+    }
+  };
+
+
+  useEffect(() => {
+    fetchCountries();
+    fetchDepartments();
+  }, []);
+  
+  const fetchCountries = async () => {
+    try {
+      const res = await getActiveCountries();
+      if (res?.success) {
+        setAllCountries(res.data || []);
+      } else {
+        setAllCountries([]);
+      }
+    } catch (error) {
+      console.error(error);
+      setAllCountries([]);
+    }
+  };
+
+  const fetchStates = async (
+    countryId: number,
+    resetCities: boolean = true
+  ) => {
+
+    try {
+
+      const res = await getActiveStatesByCountry(countryId);
+
+      if (res?.success) {
+        setAllStates(res.data || []);
+      } else {
+        setAllStates([]);
+      }
+
+      if (resetCities) {
+        setAllCities([]);
+      }
+
+    } catch (error) {
+
+      console.error(error);
+
+      setAllStates([]);
+
+      if (resetCities) {
+        setAllCities([]);
+      }
+    }
+  };
+
+  const fetchCities = async (stateId: number) => {
+    try {
+      const res = await getActiveCitiesByState(stateId);
+
+      if (res?.success) {
+        setAllCities(res.data || []);
+      } else {
+        setAllCities([]);
+      }
+
+    } catch (error) {
+      console.error(error);
+      setAllCities([]);
+    }
+  };
+
+  // My Custome Code End
+
   const [newDepartment, setNewDepartment] = useState({
     name: '',
     description: '',
-    headOfDepartment: '',
+    head_of_department: '',
+    employee_count: 0,
     budget: '',
-    location: '',
-    status: 'ACTIVE' as 'ACTIVE' | 'INACTIVE'
+    country_id: '',
+    state_id: '',
+    city_id: '',
+    status: 0
   });
 
-  const initialDepartments: Department[] = [
-    {
-      id: 1,
-      name: 'Sales',
-      description: 'Customer acquisition and revenue generation',
-      headOfDepartment: 'Ravi Mehta',
-      employeeCount: 3,
-      budget: '$250,000',
-      location: 'Mumbai, India',
-      status: 'ACTIVE',
-      createdDate: '2023-10-01'
-    },
-    {
-      id: 2,
-      name: 'Operations',
-      description: 'Trip planning and execution management',
-      headOfDepartment: 'Kirana Dewi',
-      employeeCount: 1,
-      budget: '$180,000',
-      location: 'Bali, Indonesia',
-      status: 'ACTIVE',
-      createdDate: '2023-10-01'
-    },
-    {
-      id: 3,
-      name: 'Finance',
-      description: 'Financial planning and accounting',
-      headOfDepartment: 'Finance Team',
-      employeeCount: 1,
-      budget: '$150,000',
-      location: 'Delhi, India',
-      status: 'ACTIVE',
-      createdDate: '2023-11-15'
-    },
-    {
-      id: 4,
-      name: 'Guest Experience',
-      description: 'Customer support and satisfaction',
-      headOfDepartment: 'Sari',
-      employeeCount: 1,
-      budget: '$120,000',
-      location: 'Jakarta, Indonesia',
-      status: 'ACTIVE',
-      createdDate: '2024-01-10'
-    },
-    {
-      id: 5,
-      name: 'Management',
-      description: 'Strategic planning and leadership',
-      headOfDepartment: 'Admin User',
-      employeeCount: 1,
-      budget: '$300,000',
-      location: 'Mumbai, India',
-      status: 'ACTIVE',
-      createdDate: '2023-09-01'
-    }
-  ];
+  const [departments, setDepartments] = useState<Department[]>([]);
 
-  const [departments, setDepartments] = useState<Department[]>(initialDepartments);
+  const fetchDepartments = async () => {
+    try {
+
+      const res = await getDepartments();
+
+      if (res?.success) {
+        setDepartments(res.data || []);
+      } else {
+        setDepartments([]);
+      }
+
+    } catch (error) {
+      console.error(error);
+      setDepartments([]);
+    }
+  };
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
   };
 
-  const handleCreateDepartment = () => {
-    if (!newDepartment.name.trim()) return;
+  const handleCreateDepartment = async () => {
 
-    const departmentToAdd: Department = {
-      id: departments.length + 1,
-      name: newDepartment.name,
-      description: newDepartment.description,
-      headOfDepartment: newDepartment.headOfDepartment,
-      employeeCount: 0,
-      budget: newDepartment.budget,
-      location: newDepartment.location,
-      status: newDepartment.status,
-      createdDate: new Date().toISOString().split('T')[0]
-    };
+    try {
 
-    setDepartments([...departments, departmentToAdd]);
-    setShowAddDepartmentModal(false);
-    setNewDepartment({
-      name: '',
-      description: '',
-      headOfDepartment: '',
-      budget: '',
-      location: '',
-      status: 'ACTIVE'
-    });
-    showToast(`Department "${departmentToAdd.name}" created successfully!`);
+      if (!newDepartment.name.trim()) return;
+
+      const res = await createDepartmentApi(
+        newDepartment.name,
+        newDepartment.description,
+        newDepartment.head_of_department,
+        newDepartment.employee_count,
+        Number(newDepartment.budget),
+        Number(newDepartment.country_id),
+        Number(newDepartment.state_id),
+        Number(newDepartment.city_id),
+        newDepartment.status
+      );
+
+      if (res?.success) {
+
+        showToast('Department created successfully');
+
+        fetchDepartments();
+
+        setShowAddDepartmentModal(false);
+
+        setNewDepartment({
+          name: '',
+          description: '',
+          head_of_department: '',
+          employee_count: 0,
+          budget: '',
+          country_id: '',
+          state_id: '',
+          city_id: '',
+          status: 0
+        });
+      }
+
+    } catch (error) {
+      console.error(error);
+      showToast('Failed to create department', 'error');
+    }
   };
 
-  const handleUpdateDepartment = () => {
-    if (!editingDepartment) return;
+  const handleUpdateDepartment = async () => {
 
-    setDepartments(departments.map(d => d.id === editingDepartment.id ? editingDepartment : d));
-    setShowEditDepartmentModal(false);
-    const deptName = editingDepartment.name;
-    setEditingDepartment(null);
-    showToast(`Department "${deptName}" updated successfully!`);
+    try {
+
+      if (!editingDepartment) return;
+
+      const res = await updateDepartmentApi(
+        editingDepartment.id,
+        editingDepartment.name,
+        editingDepartment.description,
+        editingDepartment.head_of_department,
+        editingDepartment.employee_count,
+        Number(editingDepartment.budget),
+        editingDepartment.country_id,
+        editingDepartment.state_id,
+        editingDepartment.city_id,
+        editingDepartment.status
+      );
+
+      if (res?.success) {
+
+        showToast('Department updated successfully');
+
+        fetchDepartments();
+
+        setShowEditDepartmentModal(false);
+
+        setEditingDepartment(null);
+      }
+
+    } catch (error) {
+      console.error(error);
+      showToast('Failed to update department', 'error');
+    }
   };
 
   const handleDeleteDepartment = (dept: Department) => {
@@ -145,32 +272,49 @@ export function DepartmentManagement() {
     setShowDeleteConfirm(true);
   };
 
-  const confirmDeleteDepartment = () => {
-    if (!departmentToDelete) return;
+  const confirmDeleteDepartment = async () => {
 
-    const deptName = departmentToDelete.name;
-    setDepartments(departments.filter(d => d.id !== departmentToDelete.id));
-    setShowDeleteConfirm(false);
-    setDepartmentToDelete(null);
-    showToast(`Department "${deptName}" deleted successfully!`);
+    try {
+
+      if (!departmentToDelete) return;
+
+      const res = await deleteDepartmentApi(departmentToDelete.id);
+
+      if (res?.success) {
+
+        showToast('Department deleted successfully');
+
+        fetchDepartments();
+
+        setShowDeleteConfirm(false);
+
+        setDepartmentToDelete(null);
+      }
+
+    } catch (error) {
+      console.error(error);
+      showToast('Failed to delete department', 'error');
+    }
   };
 
   const filteredDepartments = departments.filter(dept => {
     const matchesSearch = dept.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          dept.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         dept.headOfDepartment.toLowerCase().includes(searchQuery.toLowerCase());
+                         dept.head_of_department.toLowerCase().includes(searchQuery.toLowerCase());
 
-    const matchesStatus = filterStatus === 'all' || dept.status === filterStatus;
+    const matchesStatus =
+    filterStatus === 'all' ||
+    dept.status === Number(filterStatus);
 
     return matchesSearch && matchesStatus;
   });
 
   const stats = {
     totalDepartments: departments.length,
-    activeDepartments: departments.filter(d => d.status === 'ACTIVE').length,
-    totalEmployees: departments.reduce((sum, d) => sum + d.employeeCount, 0),
+    activeDepartments: departments.filter(d => d.status === 0).length,
+    totalEmployees: departments.reduce((sum, d) => sum + d.employee_count, 0),
     totalBudget: departments.reduce((sum, d) => {
-      const budget = d.budget ? parseInt(d.budget.replace(/[$,]/g, '')) : 0;
+      const budget = Number(d.budget || 0);
       return sum + budget;
     }, 0)
   };
@@ -206,19 +350,27 @@ export function DepartmentManagement() {
               {showFilterDropdown && (
                 <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-border z-10">
                   <div className="p-2">
-                    <p className="text-xs text-muted-foreground px-2 py-1">Filter by Status</p>
-                    {['all', 'ACTIVE', 'INACTIVE'].map((status) => (
+                    <p className="text-xs text-muted-foreground px-2 py-1">
+                      Filter by Status
+                    </p>
+                    {[
+                      { label: 'All Status', value: 'all' },
+                      { label: 'Active', value: '0' },
+                      { label: 'Inactive', value: '1' }
+                    ].map((status) => (
                       <button
-                        key={status}
+                        key={status.value}
                         onClick={() => {
-                          setFilterStatus(status);
+                          setFilterStatus(status.value);
                           setShowFilterDropdown(false);
                         }}
                         className={`w-full text-left px-3 py-2 rounded text-sm hover:bg-sidebar-accent transition-colors ${
-                          filterStatus === status ? 'bg-[#4b49ac]/10 text-[#4b49ac]' : 'text-foreground'
+                          filterStatus === status.value
+                            ? 'bg-[#4b49ac]/10 text-[#4b49ac]'
+                            : 'text-foreground'
                         }`}
                       >
-                        {status === 'all' ? 'All Status' : status.charAt(0) + status.slice(1).toLowerCase()}
+                        {status.label}
                       </button>
                     ))}
                   </div>
@@ -308,28 +460,28 @@ export function DepartmentManagement() {
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <p className="text-sm text-foreground">{dept.headOfDepartment}</p>
+                    <p className="text-sm text-foreground">{dept.head_of_department}</p>
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1">
                       <Users className="w-3.5 h-3.5 text-muted-foreground" />
-                      <span className="text-sm text-foreground">{dept.employeeCount}</span>
+                      <span className="text-sm text-foreground">{dept.employee_count}</span>
                     </div>
                   </td>
                   <td className="px-4 py-3">
                     <p className="text-sm text-foreground font-medium">{dept.budget || 'N/A'}</p>
                   </td>
                   <td className="px-4 py-3">
-                    <p className="text-sm text-muted-foreground">{dept.location || 'N/A'}</p>
+                    <p className="text-sm text-muted-foreground">{dept.city_name}, {dept.state_name}, {dept.country_name}</p>
                   </td>
                   <td className="px-4 py-3">
                     <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${
-                      dept.status === 'ACTIVE'
+                      dept.status === 0
                         ? 'bg-green-100 text-green-700'
                         : 'bg-gray-100 text-gray-700'
                     }`}>
-                      {dept.status === 'ACTIVE' ? <CheckCircle className="w-3 h-3" /> : <X className="w-3 h-3" />}
-                      {dept.status}
+                      {dept.status === 0 ? <CheckCircle className="w-3 h-3" /> : <X className="w-3 h-3" />}
+                      {dept.status === 0 ? 'ACTIVE' : 'INACTIVE'}
                     </span>
                   </td>
                   <td className="px-4 py-3">
@@ -342,8 +494,34 @@ export function DepartmentManagement() {
                         <Eye className="w-4 h-4 text-green-600" />
                       </button>
                       <button
-                        onClick={() => {
-                          setEditingDepartment({ ...dept });
+                        onClick={async () => {
+                          const countryId = Number(dept.country);
+                          const stateId = Number(dept.state);
+                          const cityId = Number(dept.city);
+
+                          // Load states
+                          await fetchStatesForEdit(countryId);
+
+                          // Load cities
+                          await fetchCitiesForEdit(stateId);
+
+                          // Set selected country
+                          setEditCountryId(countryId);
+
+                          // Set department data
+                          setEditingDepartment({
+                            ...dept,
+
+                            country: String(countryId),
+                            state: String(stateId),
+                            city: String(cityId),
+
+                            country_id: countryId,
+                            state_id: stateId,
+                            city_id: cityId,
+                          });
+
+                          // Open modal
                           setShowEditDepartmentModal(true);
                         }}
                         className="p-1.5 rounded hover:bg-blue-100 transition-colors"
@@ -354,10 +532,10 @@ export function DepartmentManagement() {
                       <button
                         onClick={() => handleDeleteDepartment(dept)}
                         className="p-1.5 rounded hover:bg-red-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        title={dept.employeeCount > 0 ? "Cannot delete department with employees" : "Delete"}
-                        disabled={dept.employeeCount > 0}
+                        title={dept.employee_count > 0 ? "Cannot delete department with employees" : "Delete"}
+                        disabled={dept.employee_count > 0}
                       >
-                        <X className={`w-4 h-4 ${dept.employeeCount > 0 ? 'text-gray-300' : 'text-red-600'}`} />
+                        <X className={`w-4 h-4 ${dept.employee_count > 0 ? 'text-gray-300' : 'text-red-600'}`} />
                       </button>
                     </div>
                   </td>
@@ -380,13 +558,17 @@ export function DepartmentManagement() {
               <button
                 onClick={() => {
                   setShowAddDepartmentModal(false);
+
                   setNewDepartment({
                     name: '',
                     description: '',
-                    headOfDepartment: '',
+                    head_of_department: '',
+                    employee_count: 0,
                     budget: '',
-                    location: '',
-                    status: 'ACTIVE'
+                    country_id: '',
+                    state_id: '',
+                    city_id: '',
+                    status: 0
                   });
                 }}
                 className="text-muted-foreground hover:text-foreground"
@@ -406,7 +588,7 @@ export function DepartmentManagement() {
                       type="text"
                       value={newDepartment.name}
                       onChange={(e) => setNewDepartment({ ...newDepartment, name: e.target.value })}
-                      placeholder="e.g., Marketing"
+                      placeholder="Department Name"
                       className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
                     />
                   </div>
@@ -414,9 +596,21 @@ export function DepartmentManagement() {
                     <label className="block text-sm font-medium text-foreground mb-2">
                       Head of Department
                     </label>
-                    <select
-                      value={newDepartment.headOfDepartment}
-                      onChange={(e) => setNewDepartment({ ...newDepartment, headOfDepartment: e.target.value })}
+                    <input
+                      type="text"
+                      value={newDepartment.head_of_department}
+                      onChange={(e) =>
+                        setNewDepartment({
+                          ...newDepartment,
+                          head_of_department: e.target.value
+                        })
+                      }
+                      placeholder="Head of Department"
+                      className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
+                    />
+                    {/* <select
+                      value={newDepartment.head_of_department}
+                      onChange={(e) => setNewDepartment({ ...newDepartment, head_of_department: e.target.value })}
                       className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
                     >
                       <option value="">Select Manager</option>
@@ -424,7 +618,7 @@ export function DepartmentManagement() {
                       <option value="Ravi Mehta">Ravi Mehta</option>
                       <option value="Kirana Dewi">Kirana Dewi</option>
                       <option value="Finance Team">Finance Team</option>
-                    </select>
+                    </select> */}
                   </div>
                 </div>
 
@@ -456,15 +650,109 @@ export function DepartmentManagement() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-2">
-                      Location
+                      Select Country
                     </label>
-                    <input
-                      type="text"
-                      value={newDepartment.location}
-                      onChange={(e) => setNewDepartment({ ...newDepartment, location: e.target.value })}
-                      placeholder="e.g., Mumbai, India"
+                    <select
+                      value={newDepartment.country_id}
+                      onChange={(e) => {
+                        const countryId = e.target.value;
+
+                        setNewDepartment({
+                          ...newDepartment,
+                          country_id: countryId,
+                          state_id: '',
+                          city_id: ''
+                        });
+
+                        if (countryId) {
+                          fetchStates(Number(countryId));
+                        } else {
+                          setAllStates([]);
+                          setAllCities([]);
+                        }
+                      }}
                       className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
-                    />
+                    >
+                      <option value="">Select Country</option>
+
+                      {allCountries.length > 0 ? (
+                        allCountries.map((country: any) => (
+                          <option key={country.id} value={country.id}>
+                            {country.name}
+                          </option>
+                        ))
+                      ) : (
+                        <option value="">No countries available</option>
+                      )}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-2">
+                      Select State
+                    </label>
+                    <select
+                      value={newDepartment.state_id}
+                      onChange={(e) => {
+                        const stateId = e.target.value;
+
+                        setNewDepartment({
+                          ...newDepartment,
+                          state_id: stateId,
+                          city_id: ''
+                        });
+
+                        if (stateId) {
+                          fetchCities(Number(stateId));
+                        } else {
+                          setAllCities([]);
+                        }
+                      }}
+                      disabled={!newDepartment.country_id}
+                      className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4b49ac] disabled:bg-gray-100"
+                    >
+                      <option value="">Select State</option>
+
+                      {allStates.length > 0 ? (
+                        allStates.map((state: any) => (
+                          <option key={state.id} value={state.id}>
+                            {state.name}
+                          </option>
+                        ))
+                      ) : (
+                        <option value="">No states available</option>
+                      )}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-2">
+                      Select City
+                    </label>
+                    <select
+                      value={newDepartment.city_id}
+                      onChange={(e) =>
+                        setNewDepartment({
+                          ...newDepartment,
+                          city_id: e.target.value
+                        })
+                      }
+                      disabled={!newDepartment.state_id}
+                      className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4b49ac] disabled:bg-gray-100"
+                    >
+                      <option value="">Select City</option>
+
+                      {allCities.length > 0 ? (
+                        allCities.map((city: any) => (
+                          <option key={city.id} value={city.id}>
+                            {city.name}
+                          </option>
+                        ))
+                      ) : (
+                        <option value="">No cities available</option>
+                      )}
+                    </select>
                   </div>
                 </div>
 
@@ -472,13 +760,19 @@ export function DepartmentManagement() {
                   <label className="block text-sm font-medium text-foreground mb-2">
                     Status
                   </label>
+
                   <select
                     value={newDepartment.status}
-                    onChange={(e) => setNewDepartment({ ...newDepartment, status: e.target.value as 'ACTIVE' | 'INACTIVE' })}
+                    onChange={(e) =>
+                      setNewDepartment({
+                        ...newDepartment,
+                        status: Number(e.target.value)
+                      })
+                    }
                     className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
                   >
-                    <option value="ACTIVE">Active</option>
-                    <option value="INACTIVE">Inactive</option>
+                    <option value={0}>Active</option>
+                    <option value={1}>Inactive</option>
                   </select>
                 </div>
               </div>
@@ -488,13 +782,17 @@ export function DepartmentManagement() {
               <button
                 onClick={() => {
                   setShowAddDepartmentModal(false);
+
                   setNewDepartment({
                     name: '',
                     description: '',
-                    headOfDepartment: '',
+                    head_of_department: '',
+                    employee_count: 0,
                     budget: '',
-                    location: '',
-                    status: 'ACTIVE'
+                    country_id: '',
+                    state_id: '',
+                    city_id: '',
+                    status: 0
                   });
                 }}
                 className="px-6 py-2.5 rounded-lg border border-border bg-white text-foreground hover:bg-muted transition-colors"
@@ -545,7 +843,7 @@ export function DepartmentManagement() {
                       type="text"
                       value={editingDepartment.name}
                       onChange={(e) => setEditingDepartment({ ...editingDepartment, name: e.target.value })}
-                      placeholder="e.g., Marketing"
+                      placeholder="Department Name"
                       className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
                     />
                   </div>
@@ -553,9 +851,21 @@ export function DepartmentManagement() {
                     <label className="block text-sm font-medium text-foreground mb-2">
                       Head of Department
                     </label>
-                    <select
-                      value={editingDepartment.headOfDepartment}
-                      onChange={(e) => setEditingDepartment({ ...editingDepartment, headOfDepartment: e.target.value })}
+                    <input
+                      type="text"
+                      value={editingDepartment.head_of_department}
+                      onChange={(e) =>
+                        setEditingDepartment({
+                          ...editingDepartment,
+                          head_of_department: e.target.value
+                        })
+                      }
+                      placeholder="Head of Department"
+                      className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
+                    />
+                    {/* <select
+                      value={editingDepartment.head_of_department}
+                      onChange={(e) => setEditingDepartment({ ...editingDepartment, head_of_department: e.target.value })}
                       className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
                     >
                       <option value="">Select Manager</option>
@@ -563,7 +873,7 @@ export function DepartmentManagement() {
                       <option value="Ravi Mehta">Ravi Mehta</option>
                       <option value="Kirana Dewi">Kirana Dewi</option>
                       <option value="Finance Team">Finance Team</option>
-                    </select>
+                    </select> */}
                   </div>
                 </div>
 
@@ -587,23 +897,114 @@ export function DepartmentManagement() {
                     </label>
                     <input
                       type="text"
-                      value={editingDepartment.budget}
-                      onChange={(e) => setEditingDepartment({ ...editingDepartment, budget: e.target.value })}
+                      value={editingDepartment.budget || ''}
+                      onChange={(e) =>
+                        setEditingDepartment({
+                          ...editingDepartment,
+                          budget: e.target.value
+                        })
+                      }
                       placeholder="e.g., $200,000"
                       className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-2">
-                      Location
+                      Select Country
                     </label>
-                    <input
-                      type="text"
-                      value={editingDepartment.location}
-                      onChange={(e) => setEditingDepartment({ ...editingDepartment, location: e.target.value })}
-                      placeholder="e.g., Mumbai, India"
+                    <select
+                        value={editingDepartment.country || ''}
+                        onChange={async (e) => {
+
+                          const countryId = Number(e.target.value);
+                          console.log('Selected country ID:', countryId);
+                          setEditCountryId(countryId);
+
+                          await fetchStatesForEdit(countryId);
+
+                          setEditCities([]);
+
+                          setEditingDepartment({
+                            ...editingDepartment,
+                            country: String(countryId),
+                            country_id: countryId,
+                            state: '',
+                            state_id: 0,
+                            city: '',
+                            city_id: 0
+                          });
+                        }}
+                        className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
+                      >
+                        <option value="">Select Country</option>
+
+                        {allCountries.map((country: any) => (
+                          <option key={country.id} value={country.id}>
+                            {country.name}
+                          </option>
+                        ))}
+                      </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-2">
+                      Select State
+                    </label>
+                   <select
+                      value={editingDepartment.state || ''}
+                      onChange={async (e) => {
+                        const stateId = Number(e.target.value);
+
+                        await fetchCitiesForEdit(stateId);
+
+                        setEditingDepartment({
+                          ...editingDepartment,
+                          state: String(stateId),
+                          state_id: stateId,
+                          city: '',
+                          city_id: 0
+                        });
+                      }}
+                      disabled={!editStates.length}
                       className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
-                    />
+                    >
+                      <option value="">Select State</option>
+
+                      {editStates.map((state: any) => (
+                        <option key={state.id} value={state.id}>
+                          {state.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-2">
+                      Select City
+                    </label>
+
+                    <select
+                      value={editingDepartment.city || ''}
+                      onChange={(e) =>
+                        setEditingDepartment({
+                          ...editingDepartment,
+                          city: e.target.value,
+                          city_id: Number(e.target.value)
+                        })
+                      }
+                      disabled={!editCities.length}
+                      className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
+                    >
+                      <option value="">Select City</option>
+
+                      {editCities.map((city: any) => (
+                        <option key={city.id} value={city.id}>
+                          {city.name}
+                        </option>
+                      ))}
+                    </select>
+
                   </div>
                 </div>
 
@@ -613,11 +1014,11 @@ export function DepartmentManagement() {
                   </label>
                   <select
                     value={editingDepartment.status}
-                    onChange={(e) => setEditingDepartment({ ...editingDepartment, status: e.target.value as 'ACTIVE' | 'INACTIVE' })}
+                    onChange={(e) => setEditingDepartment({ ...editingDepartment, status: Number(e.target.value) })}
                     className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
                   >
-                    <option value="ACTIVE">Active</option>
-                    <option value="INACTIVE">Inactive</option>
+                    <option value={0}>Active</option>
+                    <option value={1}>Inactive</option>
                   </select>
                 </div>
               </div>
@@ -670,12 +1071,12 @@ export function DepartmentManagement() {
               </div>
               <div>
                 <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium ${
-                  viewingDepartment.status === 'ACTIVE'
+                  viewingDepartment.status === 0
                     ? 'bg-green-500/20 text-green-100 border border-green-400/30'
                     : 'bg-gray-500/20 text-gray-100 border border-gray-400/30'
                 }`}>
-                  {viewingDepartment.status === 'ACTIVE' ? <CheckCircle className="w-3 h-3" /> : <X className="w-3 h-3" />}
-                  {viewingDepartment.status}
+                  {viewingDepartment.status === 0 ? <CheckCircle className="w-3 h-3" /> : <X className="w-3 h-3" />}
+                  {viewingDepartment.status === 0 ? 'Active' : 'Inactive' }
                 </span>
               </div>
             </div>
@@ -687,7 +1088,7 @@ export function DepartmentManagement() {
                     <Users className="w-4 h-4 text-[#4b49ac]" />
                     Department Head
                   </h4>
-                  <p className="text-sm text-foreground font-medium">{viewingDepartment.headOfDepartment}</p>
+                  <p className="text-sm text-foreground font-medium">{viewingDepartment.head_of_department}</p>
                 </div>
 
                 <div className="bg-white rounded-lg border border-border p-4">
@@ -695,7 +1096,7 @@ export function DepartmentManagement() {
                     <Users className="w-4 h-4 text-[#4b49ac]" />
                     Employees
                   </h4>
-                  <p className="text-2xl font-semibold text-foreground">{viewingDepartment.employeeCount}</p>
+                  <p className="text-2xl font-semibold text-foreground">{viewingDepartment.employee_count}</p>
                 </div>
 
                 <div className="bg-white rounded-lg border border-border p-4">
@@ -711,7 +1112,11 @@ export function DepartmentManagement() {
                     <Building2 className="w-4 h-4 text-[#4b49ac]" />
                     Location
                   </h4>
-                  <p className="text-sm text-foreground">{viewingDepartment.location || 'Not specified'}</p>
+                  <p className="text-sm text-foreground">
+                    {viewingDepartment.city_name && viewingDepartment.state_name && viewingDepartment.country_name
+                      ? `${viewingDepartment.city_name}, ${viewingDepartment.state_name}, ${viewingDepartment.country_name}`
+                      : 'Not specified'}
+                  </p>
                 </div>
 
                 <div className="col-span-2 bg-white rounded-lg border border-border p-4">
@@ -720,7 +1125,7 @@ export function DepartmentManagement() {
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Created Date:</span>
                       <span className="text-foreground font-medium">
-                        {new Date(viewingDepartment.createdDate).toLocaleDateString('en-US', {
+                        {new Date(viewingDepartment.created_at).toLocaleDateString('en-US', {
                           year: 'numeric',
                           month: 'long',
                           day: 'numeric'
@@ -773,10 +1178,10 @@ export function DepartmentManagement() {
                   <p className="text-sm text-muted-foreground mb-4">
                     Are you sure you want to delete the department <span className="font-semibold">"{departmentToDelete.name}"</span>? This action cannot be undone.
                   </p>
-                  {departmentToDelete.employeeCount > 0 && (
+                  {departmentToDelete.employee_count > 0 && (
                     <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
                       <p className="text-sm text-yellow-800">
-                        This department has {departmentToDelete.employeeCount} employee{departmentToDelete.employeeCount !== 1 ? 's' : ''} assigned and cannot be deleted.
+                        This department has {departmentToDelete.employee_count} employee{departmentToDelete.employee_count !== 1 ? 's' : ''} assigned and cannot be deleted.
                       </p>
                     </div>
                   )}
@@ -796,7 +1201,7 @@ export function DepartmentManagement() {
               </button>
               <button
                 onClick={confirmDeleteDepartment}
-                disabled={departmentToDelete.employeeCount > 0}
+                disabled={departmentToDelete.employee_count > 0}
                 className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 <X className="w-4 h-4" />

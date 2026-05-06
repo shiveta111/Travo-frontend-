@@ -32,7 +32,7 @@ export default defineConfig(({ command }) => ({
   resolve: {
     alias: {
       // Alias @ to the src directory
-      '@': path.resolve(__dirname, './src'),
+      '@': path.resolve(__dirname, './src'), 
     },
   },
 

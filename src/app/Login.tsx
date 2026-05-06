@@ -85,7 +85,7 @@ export function Login({
 
         <h2 className="text-2xl font-semibold text-[var(--foreground)] mb-2">
 
-          Login to Travo AI
+          DMC Hub Travo AI
 
         </h2>
 
