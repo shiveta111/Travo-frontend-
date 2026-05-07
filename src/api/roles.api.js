@@ -10,6 +10,11 @@ export const getRoles = async () => {
   return response.data;
 };
 
+export const getActiveRoles = async () => {
+  const response = await api.get('/roles/active');
+  return response.data;
+};
+
 // ✅ GET SINGLE ROLE
 export const getRoleById = async (id) => {
   const response = await api.get(`/roles/${id}`);

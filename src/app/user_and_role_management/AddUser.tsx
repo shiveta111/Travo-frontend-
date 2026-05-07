@@ -1,28 +1,35 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Users, UserPlus, Search, Edit2, Key, X, CheckCircle, Clock,
   AlertCircle, Activity, Lock, Filter, Eye, Mail, Phone, Calendar,
   Shield, MapPin, Briefcase, TrendingUp, Plane, DollarSign, BarChart3,
   Upload, Camera
 } from 'lucide-react';
+import { getActiveCountries, getActiveStatesByCountry, getActiveCitiesByState } from '../../api/location.api';
+import { getActiveDepartments } from '../../api/department.api';
+import { getActiveRoles } from '../../api/roles.api';
 
 type UserStatus = 'ACTIVE' | 'IDLE' | 'INACTIVE';
 type UserRole = 'ADMIN' | 'SALES' | 'OPERATIONS' | 'FINANCE' | 'GUEST_SUPPORT' | 'AI_AGENT';
 
 interface User {
   id: number;
-  name: string;
+  first_name?: string;
+  last_name?: string;
   email: string;
   role: UserRole;
   department: string;
   status: UserStatus;
   lastActive: string;
   phone?: string;
-  employeeId?: string;
   joinDate?: string;
   reportingTo?: string;
   location?: string;
   profilePicture?: string;
+
+  country_id?: number | string;
+  state_id?: number | string;
+  city_id?: number | string;
 }
 
 export function AddUser() {
@@ -34,6 +41,157 @@ export function AddUser() {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   const [profilePreview, setProfilePreview] = useState<string | null>(null);
+
+  const [allCountries, setAllCountries] = useState<any[]>([]);
+  const [allStates, setAllStates] = useState<any[]>([]);
+  const [allCities, setAllCities] = useState<any[]>([]);
+  const [activeDepartments, setActiveDepartments] = useState<any[]>([]);
+  const [activeRoles, setActiveRoles] = useState<any[]>([]);
+
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  const [passwords, setPasswords] = useState({
+    password: '',
+    confirm_password: ''
+  });
+
+  const generatePassword = () => {
+    const chars =
+      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789@#$%';
+
+    let generatedPassword = '';
+
+    for (let i = 0; i < 10; i++) {
+      generatedPassword += chars.charAt(
+        Math.floor(Math.random() * chars.length)
+      );
+    }
+
+    setPasswords({
+      password: generatedPassword,
+      confirm_password: generatedPassword
+    });
+  };
+  
+  useEffect(() => {
+    fetchCountries();
+    fetchDepartments();
+    fetchRoles();
+  }, []);
+
+  const fetchRoles = async () => {
+    try {
+      const res = await getActiveRoles();
+      console.log('Active roles fetched:', res);
+      if (res?.success) {
+        // setActiveRoles(res.roles || []);
+        setActiveRoles(res.data?.roles || []);
+      } else {
+        setActiveRoles([]);
+      }
+    } catch (error) {
+      console.error(error);
+      setActiveRoles([]);
+    }
+  };
+
+  const fetchDepartments = async () => {
+    try {
+      const res = await getActiveDepartments();
+      if (res?.success) {
+        setActiveDepartments(res.data || []);
+      } else {
+        setActiveDepartments([]);
+      }
+    } catch (error) {
+      console.error(error);
+      setActiveDepartments([]);
+    }
+  };
+
+  const fetchCountries = async () => {
+    try {
+      const res = await getActiveCountries();
+      if (res?.success) {
+        setAllCountries(res.data || []);
+      } else {
+        setAllCountries([]);
+      }
+    } catch (error) {
+      console.error(error);
+      setAllCountries([]);
+    }
+  };
+
+  const fetchStates = async (
+    countryId: number,
+    resetCities: boolean = true
+  ) => {
+
+    try {
+
+      const res = await getActiveStatesByCountry(countryId);
+
+      if (res?.success) {
+        setAllStates(res.data || []);
+      } else {
+        setAllStates([]);
+      }
+
+      if (resetCities) {
+        setAllCities([]);
+      }
+
+    } catch (error) {
+
+      console.error(error);
+
+      setAllStates([]);
+
+      if (resetCities) {
+        setAllCities([]);
+      }
+    }
+  };
+
+  const fetchCities = async (stateId: number) => {
+    try {
+      const res = await getActiveCitiesByState(stateId);
+
+      if (res?.success) {
+        setAllCities(res.data || []);
+      } else {
+        setAllCities([]);
+      }
+
+    } catch (error) {
+      console.error(error);
+      setAllCities([]);
+    }
+  };
+
+  const [userForm, setUserForm] = useState<any>({
+    name: '',
+    employeeId: '',
+    joinDate: '',
+    email: '',
+    phone: '',
+    country_id: '',
+    state_id: '',
+    city_id: '',
+  });
+
+  const handleEditUser = (user: User) => {
+    setSelectedUser(user);
+
+    setUserForm({
+      ...user,
+      country_id: user.country_id || '',
+      state_id: user.state_id || '',
+      city_id: user.city_id || '',
+    });
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -563,28 +721,35 @@ export function AddUser() {
                   </h4>
                   <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">
+
+                      {/* First Name */}
                       <div>
                         <label className="block text-sm font-medium text-foreground mb-2">
-                          Full Name <span className="text-red-600">*</span>
+                          First Name <span className="text-red-600">*</span>
                         </label>
+
                         <input
                           type="text"
-                          defaultValue={selectedUser?.name}
-                          placeholder="e.g., John Doe"
+                          defaultValue={selectedUser?.first_name}
+                          placeholder="Enter First Name"
                           className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
                         />
                       </div>
+
+                      {/* Last Name */}
                       <div>
                         <label className="block text-sm font-medium text-foreground mb-2">
-                          Employee ID
+                          Last Name <span className="text-red-600">*</span>
                         </label>
+
                         <input
                           type="text"
-                          defaultValue={selectedUser?.employeeId}
-                          placeholder="e.g., EMP007"
+                          defaultValue={selectedUser?.last_name}
+                          placeholder="Enter Last Name"
                           className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
                         />
                       </div>
+
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -600,16 +765,115 @@ export function AddUser() {
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-foreground mb-2">
-                          Location
+                          Select Country
                         </label>
-                        <input
-                          type="text"
-                          defaultValue={selectedUser?.location}
-                          placeholder="e.g., Mumbai, India"
+
+                        <select
+                          value={userForm.country_id}
+                          onChange={(e) => {
+                            const countryId = e.target.value;
+
+                            setUserForm({
+                              ...userForm,
+                              country_id: countryId,
+                              state_id: '',
+                              city_id: ''
+                            });
+
+                            if (countryId) {
+                              fetchStates(Number(countryId));
+                            } else {
+                              setAllStates([]);
+                              setAllCities([]);
+                            }
+                          }}
                           className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
-                        />
+                        >
+                          <option value="">Select Country</option>
+
+                          {allCountries.length > 0 ? (
+                            allCountries.map((country: any) => (
+                              <option key={country.id} value={country.id}>
+                                {country.name}
+                              </option>
+                            ))
+                          ) : (
+                            <option value="">No countries available</option>
+                          )}
+                        </select>
+
                       </div>
                     </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-foreground mb-2">
+                          Select State
+                        </label>
+                        <select
+                          value={userForm.state_id}
+                          onChange={(e) => {
+                            const stateId = e.target.value;
+
+                            setUserForm({
+                              ...userForm,
+                              state_id: stateId,
+                              city_id: ''
+                            });
+
+                            if (stateId) {
+                              fetchCities(Number(stateId));
+                            } else {
+                              setAllCities([]);
+                            }
+                          }}
+                          disabled={!userForm.country_id}
+                          className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4b49ac] disabled:bg-gray-100"
+                        >
+                          <option value="">Select State</option>
+
+                          {allStates.length > 0 ? (
+                            allStates.map((state: any) => (
+                              <option key={state.id} value={state.id}>
+                                {state.name}
+                              </option>
+                            ))
+                          ) : (
+                            <option value="">No states available</option>
+                          )}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-foreground mb-2">
+                          Select City
+                        </label>
+                        <select
+                          value={userForm.city_id}
+                          onChange={(e) =>
+                            setUserForm({
+                              ...userForm,
+                              city_id: e.target.value
+                            })
+                          }
+                          disabled={!userForm.state_id}
+                          className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4b49ac] disabled:bg-gray-100"
+                        >
+                          <option value="">Select City</option>
+
+                          {allCities.length > 0 ? (
+                            allCities.map((city: any) => (
+                              <option key={city.id} value={city.id}>
+                                {city.name}
+                              </option>
+                            ))
+                          ) : (
+                            <option value="">No cities available</option>
+                          )}
+                        </select>
+                      </div>
+                    </div>
+
+
                   </div>
                 </div>
 
@@ -628,7 +892,7 @@ export function AddUser() {
                         <input
                           type="email"
                           defaultValue={selectedUser?.email}
-                          placeholder="john@travelops.com"
+                          placeholder="Enter email address"
                           className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
                         />
                       </div>
@@ -639,7 +903,7 @@ export function AddUser() {
                         <input
                           type="tel"
                           defaultValue={selectedUser?.phone}
-                          placeholder="+91 98765 43210"
+                          placeholder="Enter phone number"
                           className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
                         />
                       </div>
@@ -664,11 +928,11 @@ export function AddUser() {
                           className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
                         >
                           <option value="">Select Department</option>
-                          <option value="Sales">Sales</option>
-                          <option value="Operations">Operations</option>
-                          <option value="Finance">Finance</option>
-                          <option value="Guest Experience">Guest Experience</option>
-                          <option value="Management">Management</option>
+                          {activeDepartments.map((dept) => (
+                            <option key={dept.id} value={dept.name}>
+                              {dept.name}
+                            </option>
+                          ))}
                         </select>
                       </div>
                       <div>
@@ -680,31 +944,108 @@ export function AddUser() {
                           className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
                         >
                           <option value="">Select Role</option>
-                          <option value="ADMIN">Admin</option>
-                          <option value="SALES">Sales Executive</option>
-                          <option value="OPERATIONS">Operations Manager</option>
-                          <option value="FINANCE">Finance</option>
-                          <option value="GUEST_SUPPORT">Guest Support</option>
+                          {activeRoles.map((role) => (
+                            console.log('Active role:', role),
+                            <option key={role.id} value={role.role_name}>
+                              {role.role_name}
+                              {/* {getRoleDisplayName(role.name as UserRole)} */}
+                            </option>
+                          ))}
                         </select>
                       </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
+                      {/* Password */}
                       <div>
                         <label className="block text-sm font-medium text-foreground mb-2">
-                          Reporting To
+                          Password <span className="text-red-600">*</span>
                         </label>
-                        <select
-                          defaultValue={selectedUser?.reportingTo}
-                          className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
-                        >
-                          <option value="">Select Manager</option>
-                          <option value="Admin User">Admin User</option>
-                          <option value="Ravi Mehta">Ravi Mehta</option>
-                          <option value="Kirana Dewi">Kirana Dewi</option>
-                          <option value="Self">Self (No Manager)</option>
-                        </select>
+
+                        <div className="relative">
+
+                          <input
+                            type={showPassword ? 'text' : 'password'}
+                            value={passwords.password}
+                            onChange={(e) =>
+                              setPasswords({
+                                ...passwords,
+                                password: e.target.value
+                              })
+                            }
+                            placeholder="Enter password"
+                            className="w-full px-3 py-2 pr-20 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
+                          />
+
+                          {/* Eye Button */}
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute right-12 top-1/2 -translate-y-1/2 text-gray-500"
+                          >
+                            {showPassword ? '🙈' : '👁'}
+                          </button>
+
+                          {/* Generate */}
+                          <button
+                            type="button"
+                            onClick={generatePassword}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-xs bg-[#4b49ac] text-white px-2 py-1 rounded"
+                          >
+                            Auto
+                          </button>
+
+                        </div>
                       </div>
+
+                      {/* Confirm Password */}
+                      <div>
+
+                        <label className="block text-sm font-medium text-foreground mb-2">
+                          Confirm Password <span className="text-red-600">*</span>
+                        </label>
+
+                        <div className="relative">
+
+                          <input
+                            type={showConfirmPassword ? 'text' : 'password'}
+                            value={passwords.confirm_password}
+                            onChange={(e) =>
+                              setPasswords({
+                                ...passwords,
+                                confirm_password: e.target.value
+                              })
+                            }
+                            placeholder="Confirm password"
+                            className="w-full px-3 py-2 pr-12 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
+                          />
+
+                          {/* Eye Button */}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setShowConfirmPassword(!showConfirmPassword)
+                            }
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500"
+                          >
+                            {showConfirmPassword ? '🙈' : '👁'}
+                          </button>
+
+                        </div>
+
+                        {/* Password Match */}
+                        {passwords.confirm_password &&
+                          passwords.password !== passwords.confirm_password && (
+                            <p className="text-red-500 text-xs mt-1">
+                              Passwords do not match
+                            </p>
+                          )}
+
+                      </div>
+
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4">
                       <div>
                         <label className="block text-sm font-medium text-foreground mb-2">
                           Status
@@ -719,42 +1060,10 @@ export function AddUser() {
                         </select>
                       </div>
                     </div>
+
                   </div>
                 </div>
 
-                {/* Permissions Preview */}
-                <div>
-                  <h4 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2 pb-2 border-b border-border">
-                    <Shield className="w-4 h-4 text-[#4b49ac]" />
-                    Access & Permissions Preview
-                  </h4>
-                  <div className="bg-[#f5f7ff] rounded-lg border border-border p-4">
-                    <p className="text-xs text-muted-foreground mb-3">
-                      The following permissions will be automatically assigned based on the selected role:
-                    </p>
-                    <div className="grid grid-cols-2 gap-2">
-                      {[
-                        { name: 'Sales CRM', icon: TrendingUp },
-                        { name: 'Trip Management', icon: Plane },
-                        { name: 'Reservations', icon: Calendar },
-                        { name: 'Payments', icon: DollarSign },
-                        { name: 'Analytics', icon: BarChart3 },
-                        { name: 'User Management', icon: Shield },
-                      ].map((module) => (
-                        <div
-                          key={module.name}
-                          className="flex items-center gap-2 px-3 py-2 bg-white rounded-lg border border-border"
-                        >
-                          <module.icon className="w-3.5 h-3.5 text-muted-foreground" />
-                          <span className="text-xs text-foreground">{module.name}</span>
-                        </div>
-                      ))}
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-3">
-                      <span className="font-medium">Note:</span> Specific permissions can be customized after user creation in Role Management.
-                    </p>
-                  </div>
-                </div>
               </div>
             </div>
 

@@ -608,17 +608,6 @@ export function DepartmentManagement() {
                       placeholder="Head of Department"
                       className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
                     />
-                    {/* <select
-                      value={newDepartment.head_of_department}
-                      onChange={(e) => setNewDepartment({ ...newDepartment, head_of_department: e.target.value })}
-                      className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
-                    >
-                      <option value="">Select Manager</option>
-                      <option value="Admin User">Admin User</option>
-                      <option value="Ravi Mehta">Ravi Mehta</option>
-                      <option value="Kirana Dewi">Kirana Dewi</option>
-                      <option value="Finance Team">Finance Team</option>
-                    </select> */}
                   </div>
                 </div>
 
@@ -863,17 +852,6 @@ export function DepartmentManagement() {
                       placeholder="Head of Department"
                       className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
                     />
-                    {/* <select
-                      value={editingDepartment.head_of_department}
-                      onChange={(e) => setEditingDepartment({ ...editingDepartment, head_of_department: e.target.value })}
-                      className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
-                    >
-                      <option value="">Select Manager</option>
-                      <option value="Admin User">Admin User</option>
-                      <option value="Ravi Mehta">Ravi Mehta</option>
-                      <option value="Kirana Dewi">Kirana Dewi</option>
-                      <option value="Finance Team">Finance Team</option>
-                    </select> */}
                   </div>
                 </div>
 

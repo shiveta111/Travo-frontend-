@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { LayoutDashboard, Users, Briefcase, Shield, ChevronDown, ChevronRight, LucideIcon } from 'lucide-react';
+import { LayoutDashboard, Users, Briefcase, Shield, ChevronDown, ChevronRight, LucideIcon, Globe, Building2, Map } from 'lucide-react';
 
 interface SubMenuItem {
   id: string;
@@ -36,22 +36,19 @@ const menuItems: MenuItem[] = [
     label: 'Settings',
     id: 'settings',
     subItems: [
-      { id: 'countries', label: 'Countries', icon: Briefcase },
-      { id: 'states', label: 'States', icon: Shield },
-      { id: 'cities', label: 'Cities', icon: Users },
+      { id: 'countries', label: 'Countries', icon: Globe },
+      { id: 'states', label: 'States', icon: Map },
+      { id: 'cities', label: 'Cities', icon: Building2 },
     ]
   },
   // More menu items can be added here
 ];
 
 export function Sidebar({ activeModule, onModuleChange }: SidebarProps) {
-  const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({});
+  const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
 
   const toggleMenu = (menuId: string) => {
-    setExpandedMenus(prev => ({
-      ...prev,
-      [menuId]: !prev[menuId]  // Toggle the submenu for the selected item
-    }));
+    setExpandedMenu(prev => prev === menuId ? null : menuId);
   };
 
   return (
@@ -66,7 +63,7 @@ export function Sidebar({ activeModule, onModuleChange }: SidebarProps) {
             const Icon = item.icon;
             const isActive = activeModule === item.id;
             const hasSubItems = item.subItems && item.subItems.length > 0;
-            const isExpanded = expandedMenus[item.id];
+            const isExpanded = expandedMenu === item.id;
             const hasActiveSubItem = item.subItems?.some(sub => sub.id === activeModule);
 
             return (
