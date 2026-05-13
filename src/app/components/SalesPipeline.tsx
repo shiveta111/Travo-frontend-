@@ -609,7 +609,7 @@ export function SalesPipeline({ initialView = 'list', initialStatus = 'All' }: {
       </div>
 
       {/* Status Cards */}
-      <div className="px-8 py-6">
+      <div className="py-6">
         <div className="flex gap-2">
           {allStatuses.map((status) => {
             const count = getStatusCount(status);
@@ -646,7 +646,7 @@ export function SalesPipeline({ initialView = 'list', initialStatus = 'All' }: {
       </div>
 
       {/* Table */}
-      <div className="flex-1 px-8 pb-6 overflow-auto">
+      <div className="flex-1 pb-6 overflow-auto">
         <div className="bg-white rounded-2xl shadow-sm" style={{ border: '1px solid #eceef5' }}>
           <div className="overflow-x-auto">
             <table className="w-full">
