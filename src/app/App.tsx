@@ -9,23 +9,36 @@ import { TopBar }
 import { Login }
   from './Login';
 
-const Dashboard           = lazy(() => import('./admin/Dashboard').then(m => ({ default: m.Dashboard })));
-const FlightControlTower  = lazy(() => import('./components/FlightControlTower').then(m => ({ default: m.FlightControlTower })));
+const Dashboard = lazy(() => import('./admin/Dashboard').then(m => ({ default: m.Dashboard })));
+const FlightControlTower = lazy(() => import('./components/FlightControlTower').then(m => ({ default: m.FlightControlTower })));
 const CreditControlDashboard = lazy(() => import('./components/CreditControlDashboard').then(m => ({ default: m.CreditControlDashboard })));
-const SalesPipeline       = lazy(() => import('./components/SalesPipeline').then(m => ({ default: m.SalesPipeline })));
-const SalesSupport        = lazy(() => import('./components/SalesSupport').then(m => ({ default: m.SalesSupport })));
-const PaymentAccounting   = lazy(() => import('./components/PaymentAccounting').then(m => ({ default: m.PaymentAccounting })));
-const InventoryBoard      = lazy(() => import('./components/InventoryBoard').then(m => ({ default: m.InventoryBoard })));
-const TripManagement      = lazy(() => import('./components/TripManagement').then(m => ({ default: m.TripManagement })));
+const SalesPipeline = lazy(() => import('./pages/LeadManagement').then(m => ({ default: m.LeadManagement })));
+const AddLeads = lazy(() => import('./pages/AddLeads').then(m => ({ default: m.AddLeads })));
+const SalesSupport = lazy(() => import('./components/SalesSupport').then(m => ({ default: m.SalesSupport })));
+const PaymentAccounting = lazy(() => import('./components/PaymentAccounting').then(m => ({ default: m.PaymentAccounting })));
+const InventoryBoard = lazy(() => import('./components/InventoryBoard').then(m => ({ default: m.InventoryBoard })));
+const TripManagement = lazy(() => import('./components/TripManagement').then(m => ({ default: m.TripManagement })));
 const ReservationsBookings = lazy(() => import('./components/ReservationsBookings').then(m => ({ default: m.ReservationsBookings })));
-const OperationsCalendar  = lazy(() => import('./components/OperationsCalendar').then(m => ({ default: m.OperationsCalendar })));
-const AnalyticsReporting  = lazy(() => import('./components/AnalyticsReporting').then(m => ({ default: m.AnalyticsReporting })));
-const AddUser             = lazy(() => import('./user_and_role_management/AddUser').then(m => ({ default: m.AddUser })));
-const AddRole             = lazy(() => import('./user_and_role_management/AddRole').then(m => ({ default: m.AddRole })));
+const OperationsCalendar = lazy(() => import('./components/OperationsCalendar').then(m => ({ default: m.OperationsCalendar })));
+const AnalyticsReporting = lazy(() => import('./components/AnalyticsReporting').then(m => ({ default: m.AnalyticsReporting })));
+const AddUser = lazy(() => import('./user_and_role_management/AddUser').then(m => ({ default: m.AddUser })));
+const AddRole = lazy(() => import('./user_and_role_management/AddRole').then(m => ({ default: m.AddRole })));
 const DepartmentManagement = lazy(() => import('./user_and_role_management/DepartmentManagement').then(m => ({ default: m.DepartmentManagement })));
-const Countries           = lazy(() => import('./setting/Countries').then(m => ({ default: m.Countries })));
-const States              = lazy(() => import('./setting/States').then(m => ({ default: m.States })));
-const Cities              = lazy(() => import('./setting/Cities').then(m => ({ default: m.Cities })));
+const Countries = lazy(() => import('./setting/Countries').then(m => ({ default: m.Countries })));
+const States = lazy(() => import('./setting/States').then(m => ({ default: m.States })));
+const Cities = lazy(() => import('./setting/Cities').then(m => ({ default: m.Cities })));
+const MenuManagement = lazy(() => import('./admin/MenuManagement').then(m => ({ default: m.MenuManagement })));
+
+const LeadManagement = lazy(() => import('./pages/LeadManagement').then(m => ({ default: m.LeadManagement })));
+const SalesAnaltics = lazy(() => import('./pages/SalesAnaltics').then(m => ({ default: m.SalesAnaltics })));
+const ViewGraph = lazy(() => import('./pages/ViewGraph').then(m => ({ default: m.ViewGraph })));
+const Country = lazy(() => import('./pages/Country').then(m => ({ default: m.Country })));
+const FieldSalesExecutive = lazy(() => import('./pages/FieldSalesExecutive').then(m => ({ default: m.FieldSalesExecutive })));
+const SalesTeamLeader = lazy(() => import('./pages/SalesTeamLeader').then(m => ({ default: m.SalesTeamLeader })));
+const SalesSupportExecutive = lazy(() => import('./pages/SalesSupportExecutive').then(m => ({ default: m.SalesSupportExecutive })));
+const SalesPackage = lazy(() => import('./pages/SalesPackage').then(m => ({ default: m.SalesPackage })));
+const Manager = lazy(() => import('./pages/Manager').then(m => ({ default: m.Manager })));
+// [AUTO-IMPORT-MARKER]
 
 import {
   useAuth
@@ -60,16 +73,16 @@ export default function App() {
 
   if (!isAuthenticated) {
 
-    return <Login onLogin={() => {}} />;
+    return <Login onLogin={() => { }} />;
 
   }
-  
+
 
   const renderContent =
     () => {
 
       switch (
-        activeModule
+      activeModule
       ) {
 
         case 'dashboard':
@@ -88,8 +101,9 @@ export default function App() {
         case 'leads-management':
         case 'all-leads':
           return <SalesPipeline initialView="list" initialStatus="All" />;
+        case 'add-leads':
         case 'new-leads':
-          return <SalesPipeline initialView="add" />;
+          return <AddLeads />;
 
         case 'sales-support':
           return <SalesSupport />;
@@ -120,13 +134,37 @@ export default function App() {
 
         case 'countries':
           return <Countries />;
-        
+
         case 'states':
           return <States />;
 
         case 'cities':
           return <Cities />;
-        
+
+        case 'menu-management':
+          return <MenuManagement />;                case 'sales-analtics':
+          return <SalesAnaltics />;
+
+                case 'view-graph':
+          return <ViewGraph />;
+
+                case 'field-sales-executive':
+          return <FieldSalesExecutive />;
+
+                case 'sales-team-leader':
+          return <SalesTeamLeader />;
+
+                case 'sales-support-executive':
+          return <SalesSupportExecutive />;
+
+                case 'sales-package':
+          return <SalesPackage />;
+
+                case 'manager':
+          return <Manager />;
+
+        // [AUTO-ROUTING-MARKER]
+
         default:
 
           return (
@@ -204,8 +242,7 @@ export default function App() {
             flex-1
             overflow-y-auto
 
-            ${
-              activeModule === 'trips' ||
+            ${activeModule === 'trips' ||
 
               activeModule === 'reservations' ||
 
@@ -217,26 +254,26 @@ export default function App() {
 
               activeModule === 'departments'
 
-                ? 'p-0'
+              ? 'p-0'
 
-                : 'p-6'
+              : 'p-6'
             }
           `}
-        >  
+        >
 
           <div
             className={
               activeModule === 'trips' ||
 
-              activeModule === 'reservations' ||
+                activeModule === 'reservations' ||
 
-              activeModule === 'operations' ||
+                activeModule === 'operations' ||
 
-              activeModule === 'add-user' ||
+                activeModule === 'add-user' ||
 
-              activeModule === 'add-role' ||
+                activeModule === 'add-role' ||
 
-              activeModule === 'departments'
+                activeModule === 'departments'
 
                 ? 'h-full'
 
@@ -245,8 +282,8 @@ export default function App() {
           >
 
             <Suspense fallback={<div>Loading...</div>}>
-            {renderContent()}
-          </Suspense>
+              {renderContent()}
+            </Suspense>
 
           </div>
 

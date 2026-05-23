@@ -36,7 +36,8 @@ export const newDepartment = async (
   country_id,
   state_id,
   city_id,
-  status
+  status,
+  menu_ids
 ) => {
 
   const response = await api.post('/departments', {
@@ -48,7 +49,8 @@ export const newDepartment = async (
     country_id,
     state_id,
     city_id,
-    status
+    status,
+    menu_ids
   });
 
   return response.data;
@@ -67,7 +69,8 @@ export const updateDepartment = async (
   country_id,
   state_id,
   city_id,
-  status
+  status,
+  menu_ids
 ) => {
 
   const response = await api.put(`/departments/${id}`, {
@@ -79,7 +82,8 @@ export const updateDepartment = async (
     country_id,
     state_id,
     city_id,
-    status
+    status,
+    menu_ids
   });
 
   return response.data;

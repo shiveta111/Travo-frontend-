@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { getActiveDepartments } from '../../api/department.api';
 import { getRoles, newRole as createRoleApi, updateRole, deleteRole } from '../../api/roles.api';
+import { getMenus } from '../../api/menus.api';
 
 export function AddRole() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -30,11 +31,22 @@ export function AddRole() {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   const [activeDepartments, setActiveDepartments] = useState<any[]>([]);
+  const [allMenus, setAllMenus] = useState<any[]>([]);
 
   useEffect(() => {
     fetchDepartments();
     fetchRoles();
+    fetchMenus();
   }, []);
+
+  const fetchMenus = async () => {
+    try {
+      const res = await getMenus(false); // flat list
+      if (res?.success) setAllMenus(res.data || []);
+    } catch (error) {
+      console.error(error);
+    }
+  };
 
   const fetchDepartments = async () => {
     try {
@@ -52,7 +64,8 @@ export function AddRole() {
   const [newRole, setNewRole] = useState<any>({
     name: '',
     description: '',
-    permissions: {}
+    permissions: {},
+    menu_ids: []
   });
 
   const [roles, setRoles] = useState<any[]>([]);
@@ -150,7 +163,8 @@ export function AddRole() {
       const res = await createRoleApi(
         newRole.name,
         newRole.description,
-        permissionsArray
+        permissionsArray,
+        newRole.menu_ids
       );
 
       if (res?.success) {
@@ -164,7 +178,8 @@ export function AddRole() {
         setNewRole({
           name: '',
           description: '',
-          permissions: {}
+          permissions: {},
+          menu_ids: []
         });
 
       }
@@ -180,15 +195,12 @@ export function AddRole() {
   };
 
   const handleEditRole = (role: any) => {
-
     setEditingRole({
       ...role,
-
-      permissions: role.permissions || {}
+      permissions: role.permissions || {},
+      menu_ids: role.menu_ids || []
     });
-
     setShowEditRoleModal(true);
-
   };
 
   const handleUpdateRole = async () => {
@@ -225,13 +237,10 @@ export function AddRole() {
       );
 
       const payload = {
-
         role_name: editingRole.role_name,
-
         description: editingRole.description,
-
-        permissions: permissionsArray
-
+        permissions: permissionsArray,
+        menu_ids: editingRole.menu_ids || []
       };
 
       const res = await updateRole(
@@ -763,6 +772,32 @@ export function AddRole() {
                   </div>
                 </div>
 
+                {/* Menu Selection */}
+                <div>
+                  <h4 className="text-foreground mb-4">Assigned Menus</h4>
+                  <div className="bg-[#f5f7ff] rounded-lg border border-border p-4">
+                    <div className="grid grid-cols-2 gap-3 max-h-48 overflow-y-auto p-4 border border-border rounded-lg bg-white">
+                      {allMenus.map((menu) => (
+                        <label key={menu.id} className="flex items-center gap-2 p-2 hover:bg-gray-50 rounded transition-colors cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={newRole.menu_ids?.includes(menu.id)}
+                            onChange={(e) => {
+                              const currentIds = newRole.menu_ids || [];
+                              const updatedIds = e.target.checked
+                                ? [...currentIds, menu.id]
+                                : currentIds.filter((id: number) => id !== menu.id);
+                              setNewRole({ ...newRole, menu_ids: updatedIds });
+                            }}
+                            className="w-4 h-4 rounded border-border text-[#4b49ac] focus:ring-[#4b49ac]"
+                          />
+                          <span className="text-sm text-foreground">{menu.title}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
                 <div>
                   <h4 className="text-foreground mb-4">Department Permissions</h4>
 
@@ -1118,6 +1153,32 @@ export function AddRole() {
                         );
 
                       })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Menu Selection */}
+                <div>
+                  <h4 className="text-foreground mb-4">Assigned Menus</h4>
+                  <div className="bg-[#f5f7ff] rounded-lg border border-border p-4">
+                    <div className="grid grid-cols-2 gap-3 max-h-48 overflow-y-auto p-4 border border-border rounded-lg bg-white">
+                      {allMenus.map((menu) => (
+                        <label key={menu.id} className="flex items-center gap-2 p-2 hover:bg-gray-50 rounded transition-colors cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={editingRole.menu_ids?.includes(menu.id)}
+                            onChange={(e) => {
+                              const currentIds = editingRole.menu_ids || [];
+                              const updatedIds = e.target.checked
+                                ? [...currentIds, menu.id]
+                                : currentIds.filter((id: number) => id !== menu.id);
+                              setEditingRole({ ...editingRole, menu_ids: updatedIds });
+                            }}
+                            className="w-4 h-4 rounded border-border text-[#4b49ac] focus:ring-[#4b49ac]"
+                          />
+                          <span className="text-sm text-foreground">{menu.title}</span>
+                        </label>
+                      ))}
                     </div>
                   </div>
                 </div>

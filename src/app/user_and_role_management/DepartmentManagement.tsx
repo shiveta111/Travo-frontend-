@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { getActiveCountries, getActiveStatesByCountry, getActiveCitiesByState } from '../../api/location.api';
 import { getDepartments, newDepartment as createDepartmentApi, updateDepartment as updateDepartmentApi, deleteDepartment as deleteDepartmentApi } from '../../api/department.api';
+import { getMenus } from '../../api/menus.api';
 
 interface Department {
   id: number;
@@ -59,6 +60,7 @@ export function DepartmentManagement() {
   const [allCountries, setAllCountries] = useState<any[]>([]);
   const [allStates, setAllStates] = useState<any[]>([]);
   const [allCities, setAllCities] = useState<any[]>([]);
+  const [allMenus, setAllMenus] = useState<any[]>([]);
 
   const [editCountryId, setEditCountryId] = useState<number | null>(null);
   const [editStates, setEditStates] = useState<any[]>([]);
@@ -96,7 +98,17 @@ export function DepartmentManagement() {
   useEffect(() => {
     fetchCountries();
     fetchDepartments();
+    fetchMenus();
   }, []);
+
+  const fetchMenus = async () => {
+    try {
+      const res = await getMenus(false); // flat list for checkboxes
+      if (res?.success) setAllMenus(res.data || []);
+    } catch (error) {
+      console.error(error);
+    }
+  };
   
   const fetchCountries = async () => {
     try {
@@ -170,7 +182,8 @@ export function DepartmentManagement() {
     country_id: '',
     state_id: '',
     city_id: '',
-    status: 0
+    status: 0,
+    menu_ids: [] as number[]
   });
 
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -212,7 +225,8 @@ export function DepartmentManagement() {
         Number(newDepartment.country_id),
         Number(newDepartment.state_id),
         Number(newDepartment.city_id),
-        newDepartment.status
+        newDepartment.status,
+        newDepartment.menu_ids
       );
 
       if (res?.success) {
@@ -258,7 +272,8 @@ export function DepartmentManagement() {
         editingDepartment.country_id,
         editingDepartment.state_id,
         editingDepartment.city_id,
-        editingDepartment.status
+        editingDepartment.status,
+        (editingDepartment as any).menu_ids || []
       );
 
       if (res?.success) {
@@ -771,9 +786,33 @@ export function DepartmentManagement() {
                     }
                     className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
                   >
-                    <option value={0}>Active</option>
                     <option value={1}>Inactive</option>
                   </select>
+                </div>
+
+                {/* Menu Selection */}
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-3">
+                    Assigned Menus
+                  </label>
+                  <div className="grid grid-cols-2 gap-3 max-h-48 overflow-y-auto p-4 border border-border rounded-lg bg-gray-50/50">
+                    {allMenus.map((menu) => (
+                      <label key={menu.id} className="flex items-center gap-2 p-2 hover:bg-white rounded transition-colors cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={newDepartment.menu_ids.includes(menu.id)}
+                          onChange={(e) => {
+                            const updatedIds = e.target.checked
+                              ? [...newDepartment.menu_ids, menu.id]
+                              : newDepartment.menu_ids.filter(id => id !== menu.id);
+                            setNewDepartment({ ...newDepartment, menu_ids: updatedIds });
+                          }}
+                          className="w-4 h-4 rounded border-border text-[#4b49ac] focus:ring-[#4b49ac]"
+                        />
+                        <span className="text-sm text-foreground">{menu.title}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
@@ -782,7 +821,6 @@ export function DepartmentManagement() {
               <button
                 onClick={() => {
                   setShowAddDepartmentModal(false);
-
                   setNewDepartment({
                     name: '',
                     description: '',
@@ -792,7 +830,8 @@ export function DepartmentManagement() {
                     country_id: '',
                     state_id: '',
                     city_id: '',
-                    status: 0
+                    status: 0,
+                    menu_ids: []
                   });
                 }}
                 className="px-6 py-2.5 rounded-lg border border-border bg-white text-foreground hover:bg-muted transition-colors"
@@ -993,7 +1032,6 @@ export function DepartmentManagement() {
                         </option>
                       ))}
                     </select>
-
                   </div>
                 </div>
 
@@ -1009,6 +1047,32 @@ export function DepartmentManagement() {
                     <option value={0}>Active</option>
                     <option value={1}>Inactive</option>
                   </select>
+                </div>
+
+                {/* Menu Selection */}
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-3">
+                    Assigned Menus
+                  </label>
+                  <div className="grid grid-cols-2 gap-3 max-h-48 overflow-y-auto p-4 border border-border rounded-lg bg-gray-50/50">
+                    {allMenus.map((menu) => (
+                      <label key={menu.id} className="flex items-center gap-2 p-2 hover:bg-white rounded transition-colors cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={(editingDepartment as any).menu_ids?.includes(menu.id)}
+                          onChange={(e) => {
+                            const currentIds = (editingDepartment as any).menu_ids || [];
+                            const updatedIds = e.target.checked
+                              ? [...currentIds, menu.id]
+                              : currentIds.filter((id: number) => id !== menu.id);
+                            setEditingDepartment({ ...editingDepartment, menu_ids: updatedIds });
+                          }}
+                          className="w-4 h-4 rounded border-border text-[#4b49ac] focus:ring-[#4b49ac]"
+                        />
+                        <span className="text-sm text-foreground">{menu.title}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>

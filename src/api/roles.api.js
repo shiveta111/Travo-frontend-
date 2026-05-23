@@ -25,13 +25,15 @@ export const getRoleById = async (id) => {
 export const newRole = async (
   role_name,
   description,
-  permissions
+  permissions,
+  menu_ids = []
 ) => {
 
   const response = await api.post('/roles', {
     role_name,
     description,
-    permissions
+    permissions,
+    menu_ids
   });
 
   return response.data;

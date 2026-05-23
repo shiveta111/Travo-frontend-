@@ -1,6 +1,11 @@
 import { useState, useEffect } from 'react';
-import { LayoutDashboard, Users, Briefcase, Shield, ChevronDown, ChevronRight, LucideIcon, Globe, Building2, Map, Plus, Calendar } from 'lucide-react';
+import { 
+  LayoutDashboard, Users, Briefcase, Shield, ChevronDown, ChevronRight, 
+  LucideIcon, Globe, Building2, Map, Plus, Calendar, FolderTree, Circle 
+} from 'lucide-react';
+import * as LucideIcons from 'lucide-react';
 import { useAuth } from '../../auth/AuthContext';
+import { getMyMenus } from '../../api/menus.api';
 
 interface SubMenuItem {
   id: string;
@@ -20,107 +25,65 @@ interface SidebarProps {
   onModuleChange: (moduleId: string) => void;
 }
 
-const menuItems: MenuItem[] = [
-  { icon: LayoutDashboard, label: 'Dashboard', id: 'dashboard' },
-  {
-    icon: Shield,
-    label: 'User & Role Management',
-    id: 'users',
-    subItems: [
-      { id: 'departments', label: 'Departments', icon: Briefcase },
-      { id: 'add-role', label: 'Role Management', icon: Shield },
-      { id: 'add-user', label: 'User Management', icon: Users },
-    ]
-  },
-  {
-    icon: Globe,
-    label: 'Leads Management',
-    id: 'leads-management',
-    subItems: [
-      { id: 'new-leads', label: 'New Leads', icon: Plus },
-      { id: 'all-leads', label: 'All Leads', icon: Users }
-    ]
-  },
-  {
-    icon: Users,
-    label: 'Customers',
-    id: 'customers',
-    subItems: [
-      { id: 'all-customers', label: 'All Customers', icon: Users },
-      { id: 'customer-profiles', label: 'Customer Profiles', icon: Briefcase }
-    ]
-  },
-  {
-    icon: Calendar,
-    label: 'Bookings',
-    id: 'bookings',
-    subItems: [
-      { id: 'flight-bookings', label: 'Flight Bookings', icon: Globe },
-      { id: 'hotel-bookings', label: 'Hotel Bookings', icon: Building2 },
-      { id: 'holiday-packages', label: 'Holiday Packages', icon: Map },
-      { id: 'visa-bookings', label: 'Visa Bookings', icon: Shield },
-      { id: 'transport-bookings', label: 'Transport Bookings', icon: Briefcase }
-    ]
-  },
-  {
-    icon: Shield,
-    label: 'Settings',
-    id: 'settings',
-    subItems: [
-      { id: 'countries', label: 'Countries', icon: Globe },
-      { id: 'states', label: 'States', icon: Map },
-      { id: 'cities', label: 'Cities', icon: Building2 },
-    ]
-  }
-];
+const IconMap: Record<string, any> = {
+  'LayoutDashboard': LayoutDashboard,
+  'Users': Users,
+  'Briefcase': Briefcase,
+  'Shield': Shield,
+  'Globe': Globe,
+  'Building2': Building2,
+  'Map': Map,
+  'Plus': Plus,
+  'Calendar': Calendar,
+  'FolderTree': FolderTree,
+  'Settings': Shield, // Map to Shield if Settings icon is not available
+  'FileText': Globe,
+  'Search': Users,
+  'Bell': Users,
+};
 
 export function Sidebar({ activeModule, onModuleChange }: SidebarProps) {
   const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
+  const [dynamicMenus, setDynamicMenus] = useState<MenuItem[]>([]);
   const { user } = useAuth();
 
-  console.log("DEBUG: Sidebar User Object:", user);
-  console.log("DEBUG: department_id:", user?.department_id, "Type:", typeof user?.department_id);
+  useEffect(() => {
+    const fetchUserMenus = async () => {
+      try {
+        const res = await getMyMenus();
+        if (res?.success && Array.isArray(res.data)) {
+          const transformed = res.data.map((m: any) => ({
+            id: m.path || String(m.id),
+            label: m.title,
+            icon: IconMap[m.icon] || Circle,
+            subItems: Array.isArray(m.subMenus) ? m.subMenus.map((sm: any) => ({
+              id: sm.path || String(sm.id),
+              label: sm.title,
+              icon: IconMap[sm.icon] || Circle,
+            })) : []
+          }));
+          setDynamicMenus(transformed);
+        }
+      } catch (error) {
+        console.error('Failed to fetch menus:', error);
+      }
+    };
 
-  const isSuperAdmin = Number(user?.role_id) === 1;
-  const isSalesExecutive = Number(user?.role_id) === 2;
+    fetchUserMenus();
+  }, [user]);
 
   const toggleMenu = (menuId: string) => {
     setExpandedMenu(prev => prev === menuId ? null : menuId);
   };
 
   useEffect(() => {
-    const parentItem = menuItems.find(item => 
+    const parentItem = dynamicMenus.find(item => 
       item.subItems?.some(sub => sub.id === activeModule)
     );
     if (parentItem) {
       setExpandedMenu(parentItem.id);
     }
-  }, [activeModule]);
-
-  const filteredMenuItems = menuItems.filter(item => {
-    // Admin only menus
-    if (item.id === 'users' || item.id === 'settings') {
-      return isSuperAdmin;
-    }
-    // Admin and Sales Executive menus
-    if (item.id === 'leads-management' || item.id === 'customers' || item.id === 'bookings') {
-      const hasAccess = isSuperAdmin || isSalesExecutive;
-      if (!hasAccess) return false;
-
-      // Filter subitems based on role
-      if (item.subItems) {
-        item.subItems = item.subItems.filter(sub => {
-          if (sub.id === 'all-leads' || sub.id === 'new-leads') {
-            return isSuperAdmin || isSalesExecutive;
-          }
-          return true;
-        });
-      }
-      return true;
-    }
-    // Dashboard is visible to all
-    return true;
-  });
+  }, [activeModule, dynamicMenus]);
 
   return (
     <aside className="w-64 bg-white border-r border-border h-full flex flex-col">
@@ -130,7 +93,7 @@ export function Sidebar({ activeModule, onModuleChange }: SidebarProps) {
 
       <nav className="flex-1 p-4 overflow-y-auto">
         <ul className="space-y-1">
-          {filteredMenuItems.map((item) => {
+          {dynamicMenus.map((item) => {
             const Icon = item.icon;
             const isActive = activeModule === item.id;
             const hasSubItems = item.subItems && item.subItems.length > 0;
@@ -142,9 +105,13 @@ export function Sidebar({ activeModule, onModuleChange }: SidebarProps) {
                 <button
                   onClick={() => {
                     if (hasSubItems) {
-                      toggleMenu(item.id); // Toggle submenu visibility when clicked
+                      toggleMenu(item.id);
+                      // Only navigate if it's a functional module, not just a category label
+                      if (item.id && !['user_and_role_management', 'settings'].includes(item.id)) {
+                        onModuleChange(item.id);
+                      }
                     } else {
-                      onModuleChange(item.id); // Change module if no subitems
+                      onModuleChange(item.id);
                     }
                   }}
                   className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${isActive || hasActiveSubItem
