@@ -1,4 +1,5 @@
-import React, { useMemo, useRef, useState, type ChangeEvent } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { getAllLeads, createLead, mapApiLead } from "../../api/leads.api";
 import {
   Search,
   Plus,
@@ -56,119 +57,6 @@ const TEAM_LEADERS = [
   { id: "TL3", name: "Sales Team Leader - West" },
 ];
 
-const LEADS: Lead[] = [
-  {
-    id: "L001",
-    client: "Arjun Sharma",
-    phone: "9876543210",
-    email: "arjun@test.com",
-    dest: "Shimla-Manali",
-    travelDate: "2026-06-10",
-    days: 6,
-    nights: 5,
-    travellers: 4,
-    status: "submitted_to_leader",
-    priority: "High",
-    assignedLeader: "Sales Team Leader - North",
-    sla: "OK",
-    budget: "₹1.2L",
-    source: "WhatsApp",
-    date: "Today 09:12",
-    dateValue: "2026-05-20",
-    progress: 35,
-    followUpDate: "2026-05-21",
-    remarks: "Client needs family package with good hotels.",
-  },
-  {
-    id: "L002",
-    client: "Meera Gupta",
-    phone: "9876543211",
-    email: "meera@test.com",
-    dest: "Kerala 7N",
-    travelDate: "2026-06-18",
-    days: 8,
-    nights: 7,
-    travellers: 2,
-    status: "quoted",
-    priority: "Normal",
-    assignedLeader: "Sales Team Leader - South",
-    sla: "OK",
-    budget: "₹2.8L",
-    source: "Website",
-    date: "Today 08:45",
-    dateValue: "2026-05-20",
-    progress: 65,
-    followUpDate: "2026-05-22",
-    remarks: "Quotation already shared.",
-  },
-  {
-    id: "L003",
-    client: "Dev Patel",
-    phone: "9876543212",
-    email: "dev@test.com",
-    dest: "Goa Package",
-    travelDate: "2026-06-05",
-    days: 4,
-    nights: 3,
-    travellers: 5,
-    status: "new",
-    priority: "Urgent",
-    assignedLeader: "Auto Assign Pending",
-    sla: "BREACH",
-    budget: "₹85K",
-    source: "Campaign",
-    date: "Today 10:01",
-    dateValue: "2026-05-20",
-    progress: 10,
-    followUpDate: "2026-05-20",
-    remarks: "Urgent travel requirement.",
-  },
-  {
-    id: "L004",
-    client: "Sneha Rao",
-    phone: "9876543213",
-    email: "sneha@test.com",
-    dest: "Rajasthan Tour",
-    travelDate: "2026-07-01",
-    days: 7,
-    nights: 6,
-    travellers: 3,
-    status: "converted",
-    priority: "High",
-    assignedLeader: "Sales Team Leader - West",
-    sla: "OK",
-    budget: "₹3.5L",
-    source: "Field Visit",
-    date: "Yesterday",
-    dateValue: "2026-05-19",
-    progress: 100,
-    followUpDate: "",
-    remarks: "Booking completed.",
-  },
-  {
-    id: "L005",
-    client: "Rohan Das",
-    phone: "9876543214",
-    email: "rohan@test.com",
-    dest: "Andaman 5N",
-    travelDate: "2026-06-25",
-    days: 5,
-    nights: 4,
-    travellers: 2,
-    status: "lost",
-    priority: "Normal",
-    assignedLeader: "Sales Team Leader - South",
-    sla: "—",
-    budget: "₹1.8L",
-    source: "Reference",
-    date: "Yesterday",
-    dateValue: "2026-05-19",
-    progress: 100,
-    followUpDate: "",
-    remarks: "Client cancelled plan.",
-  },
-];
-
 const today = new Date().toISOString().split("T")[0];
 
 const getStatusColor = (status: string) => {
@@ -219,7 +107,40 @@ export function FieldSalesExecutive() {
   const [filterPriority, setFilterPriority] = useState("all");
   const [dateFilter, setDateFilter] = useState("");
 
-  const [leadsData, setLeadsData] = useState<Lead[]>(LEADS);
+  const [leadsData, setLeadsData] = useState<Lead[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [fetchError, setFetchError] = useState("");
+
+  // ─── Fetch leads from API ───────────────────────────────────────────────────
+  const fetchLeads = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setFetchError("");
+      const data = await getAllLeads();
+      // API may return { leads: [...] } or a plain array — handle both
+      const rawList: any[] = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.leads)
+        ? data.leads
+        : Array.isArray(data?.data)
+        ? data.data
+        : [];
+      setLeadsData(rawList.map(mapApiLead));
+    } catch (err: any) {
+      console.error("Failed to fetch leads:", err);
+      setFetchError(
+        err?.response?.data?.message || "Failed to load leads. Please try again."
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchLeads();
+  }, [fetchLeads]);
+  // ───────────────────────────────────────────────────────────────────────────
+
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadedFileName, setUploadedFileName] = useState("");
   const [uploadError, setUploadError] = useState("");
@@ -317,41 +238,44 @@ export function FieldSalesExecutive() {
     });
   };
 
-  const submitLead = () => {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const submitLead = async () => {
     if (!leadForm.client || !leadForm.phone || !leadForm.dest) {
       alert("Please fill Client Name, Phone Number and Destination.");
       return;
     }
 
-    const newLead: Lead = {
-      id: `L${String(leadsData.length + 1).padStart(3, "0")}`,
-      client: leadForm.client,
-      phone: leadForm.phone,
-      email: leadForm.email,
-      dest: leadForm.dest,
-      travelDate: leadForm.travelDate,
-      days: leadForm.days,
-      nights: leadForm.nights,
-      travellers: leadForm.travellers,
-      budget: leadForm.budget || "₹0",
-      source: leadForm.source,
-      priority: leadForm.priority,
-      assignedLeader: leadForm.assignedLeader,
-      status: "submitted_to_leader",
-      sla: "OK",
-      date: "Today",
-      dateValue: today,
-      progress: 20,
-      followUpDate: leadForm.followUpDate,
-      remarks: leadForm.remarks,
-    };
+    try {
+      setIsSubmitting(true);
+      const responseData = await createLead(leadForm);
 
-    setLeadsData((prev) => [newLead, ...prev]);
-    setUploadSuccess("Lead submitted successfully to Team Leader.");
-    setShowAddLeadModal(false);
-    resetLeadForm();
+      // API may return the new lead object or wrap it — handle both
+      const rawLead: any =
+        responseData?.lead ??
+        responseData?.data ??
+        responseData;
 
-    setTimeout(() => setUploadSuccess(""), 4000);
+      if (rawLead && rawLead.id) {
+        // Add the freshly-created lead (mapped) to the top of the list
+        setLeadsData((prev) => [mapApiLead(rawLead), ...prev]);
+      } else {
+        // Fallback: re-fetch all leads to reflect server state
+        await fetchLeads();
+      }
+
+      setUploadSuccess("Lead submitted successfully to Team Leader.");
+      setShowAddLeadModal(false);
+      resetLeadForm();
+      setTimeout(() => setUploadSuccess(""), 4000);
+    } catch (err: any) {
+      console.error("Failed to create lead:", err);
+      setUploadError(
+        err?.response?.data?.message || "Failed to submit lead. Please try again."
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleFileUpload = (event: ChangeEvent<HTMLInputElement>) => {
@@ -726,6 +650,19 @@ export function FieldSalesExecutive() {
           </div>
         </div>
 
+        {/* ── API fetch error banner ──────────────────────────────────── */}
+        {fetchError && (
+          <div className="m-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between">
+            <p className="text-sm text-red-800">{fetchError}</p>
+            <button
+              onClick={fetchLeads}
+              className="ml-4 text-xs px-3 py-1 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg transition-colors"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-sidebar-accent">
@@ -879,7 +816,34 @@ export function FieldSalesExecutive() {
                 </tr>
               ))}
 
-              {filteredLeads.length === 0 && (
+              {isLoading && (
+                <tr>
+                  <td colSpan={13} className="px-4 py-10 text-center">
+                    <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                      <svg
+                        className="animate-spin w-6 h-6 text-[#4b49ac]"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12" cy="12" r="10"
+                          stroke="currentColor" strokeWidth="4"
+                        />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8v8H4z"
+                        />
+                      </svg>
+                      <span className="text-sm">Loading leads…</span>
+                    </div>
+                  </td>
+                </tr>
+              )}
+
+              {!isLoading && filteredLeads.length === 0 && (
                 <tr>
                   <td
                     colSpan={13}
@@ -1157,9 +1121,20 @@ export function FieldSalesExecutive() {
 
               <button
                 onClick={submitLead}
-                className="px-4 py-2 bg-[#4b49ac] text-white rounded-lg text-sm hover:bg-[#4b49ac]/90"
+                disabled={isSubmitting}
+                className="flex items-center gap-2 px-4 py-2 bg-[#4b49ac] text-white rounded-lg text-sm hover:bg-[#4b49ac]/90 disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                Submit Lead To Leader
+                {isSubmitting && (
+                  <svg
+                    className="animate-spin w-4 h-4"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none" viewBox="0 0 24 24"
+                  >
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                  </svg>
+                )}
+                {isSubmitting ? "Submitting…" : "Submit Lead To Leader"}
               </button>
             </div>
           </div>
