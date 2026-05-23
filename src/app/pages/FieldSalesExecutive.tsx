@@ -1059,37 +1059,6 @@ export function FieldSalesExecutive() {
                   </select>
                 </div>
 
-                <div>
-                  <label className="text-sm text-muted-foreground mb-1 block">
-                    Submit To Team Leader
-                  </label>
-                  <select
-                    value={leadForm.assignedLeader}
-                    onChange={(e) =>
-                      handleLeadInputChange("assignedLeader", e.target.value)
-                    }
-                    className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
-                  >
-                    <option>Auto Assign Pending</option>
-                    {TEAM_LEADERS.map((leader) => (
-                      <option key={leader.id}>{leader.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-sm text-muted-foreground mb-1 block">
-                    Follow-up Date
-                  </label>
-                  <input
-                    type="date"
-                    value={leadForm.followUpDate}
-                    onChange={(e) =>
-                      handleLeadInputChange("followUpDate", e.target.value)
-                    }
-                    className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
-                  />
-                </div>
               </div>
 
               <div className="mt-4">
