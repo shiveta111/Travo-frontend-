@@ -26,14 +26,16 @@ export const newRole = async (
   role_name,
   description,
   permissions,
-  menu_ids = []
+  menu_ids = [],
+  department_id = null
 ) => {
 
   const response = await api.post('/roles', {
     role_name,
     description,
     permissions,
-    menu_ids
+    menu_ids,
+    ...(department_id ? { department_id } : {})
   });
 
   return response.data;

@@ -1,8 +1,9 @@
 import api from './axios';
 
 // Priority value mapping (API ↔ UI)
-const PRIORITY_TO_NUMBER = { Normal: 0, High: 1, Urgent: 2 };
-const PRIORITY_TO_LABEL   = { 0: 'Normal', 1: 'High', 2: 'Urgent' };
+// API scale: 0=Low, 1=Medium, 2=High
+const PRIORITY_TO_NUMBER = { Low: 0, Normal: 0, Medium: 1, High: 2, Urgent: 2 };
+const PRIORITY_TO_LABEL   = { 0: 'Low', 1: 'Medium', 2: 'High' };
 
 /**
  * Map a raw API lead object → the frontend Lead shape.
@@ -16,10 +17,13 @@ export const mapApiLead = (apiLead) => {
   let dateValue   = today;
   if (apiLead.created_at) {
     const d = new Date(apiLead.created_at);
-    dateValue    = d.toISOString().split('T')[0];
-    displayDate  = dateValue === today
-      ? `Today ${d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`
-      : d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+    // Guard: skip if date is invalid (e.g. MySQL "0000-00-00" or null)
+    if (!isNaN(d.getTime())) {
+      dateValue    = d.toISOString().split('T')[0];
+      displayDate  = dateValue === today
+        ? `Today ${d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`
+        : d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+    }
   }
 
   // Format budget as ₹ string for display
@@ -75,7 +79,7 @@ export const getAllLeads = async (filters = {}) => {
     params.created_date = filters.created_date;
   }
 
-  const response = await api.post('/leads/all', {}, { params });
+  const response = await api.get('/leads/all', { params });
   return response.data;
 };
 

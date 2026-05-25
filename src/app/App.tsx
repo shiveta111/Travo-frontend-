@@ -35,6 +35,7 @@ const ViewGraph = lazy(() => import('./pages/ViewGraph').then(m => ({ default: m
 const Country = lazy(() => import('./pages/Country').then(m => ({ default: m.Country })));
 const FieldSalesExecutive = lazy(() => import('./pages/FieldSalesExecutive').then(m => ({ default: m.FieldSalesExecutive })));
 const SalesTeamLeader = lazy(() => import('./pages/SalesTeamLeader').then(m => ({ default: m.SalesTeamLeader })));
+const SalesTeamMemberHistory = lazy(() => import('./sales_team_leader/SalesTeamMemberHistory').then(m => ({ default: m.SalesTeamMemberHistory })));
 const SalesSupportExecutive = lazy(() => import('./pages/SalesSupportExecutive').then(m => ({ default: m.SalesSupportExecutive })));
 const SalesPackage = lazy(() => import('./pages/SalesPackage').then(m => ({ default: m.SalesPackage })));
 const Manager = lazy(() => import('./pages/Manager').then(m => ({ default: m.Manager })));
@@ -148,19 +149,29 @@ export default function App() {
                 case 'view-graph':
           return <ViewGraph />;
 
-                case 'field-sales-executive':
+        // Field Sales Executive — both route keys supported
+        case 'field-sales-executive':
+        case 'sales-field-executive':
           return <FieldSalesExecutive />;
 
-                case 'sales-team-leader':
+        // Sales Team Leader
+        case 'sales-team-leader':
           return <SalesTeamLeader />;
 
-                case 'sales-support-executive':
+        // Sales Team Member History
+        case 'sales-team-member-history':
+          return <SalesTeamMemberHistory />;
+
+        // Sales Support Executive
+        case 'sales-support-executive':
           return <SalesSupportExecutive />;
 
-                case 'sales-package':
+        // Sales Package
+        case 'sales-package':
           return <SalesPackage />;
 
-                case 'manager':
+        // Manager
+        case 'manager':
           return <Manager />;
 
         // [AUTO-ROUTING-MARKER]

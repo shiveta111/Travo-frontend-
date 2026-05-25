@@ -24,28 +24,21 @@ export default defineConfig(({ command }) => ({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
+        target: 'https://dev.ekarigar.com',
         changeOrigin: true,
-        secure: false,
-        rewrite: (path) => {
-          // If target is localhost, don't add the /travo/backend prefix
-          const target = 'http://localhost:5000';
-          return target.includes('localhost') ? path : path.replace(/^\/api/, '/travo/backend/api');
-        },
+        secure: true,
+        rewrite: (path) => path.replace(/^\/api/, '/travo/backend/api'),
         headers: {
-          Origin: 'http://localhost:3000',
+          Origin: 'https://dev.ekarigar.com',
         },
       },
       '/uploads': {
-        target: 'http://localhost:5000',
+        target: 'https://dev.ekarigar.com',
         changeOrigin: true,
-        secure: false,
-        rewrite: (path) => {
-          const target = 'http://localhost:5000';
-          return target.includes('localhost') ? path : path.replace(/^\/uploads/, '/travo/backend/uploads');
-        },
+        secure: true,
+        rewrite: (path) => path.replace(/^\/uploads/, '/travo/backend/uploads'),
         headers: {
-          Origin: 'http://localhost:3000',
+          Origin: 'https://dev.ekarigar.com',
         },
       },
     },

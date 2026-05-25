@@ -14,6 +14,7 @@ import {
   Eye,
   CalendarDays,
   UserPlus,
+  RefreshCw,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 
@@ -26,7 +27,7 @@ type LeadStatus =
   | "converted"
   | "lost";
 
-type LeadPriority = "Normal" | "High" | "Urgent";
+type LeadPriority = "Low" | "Medium" | "High" | "Normal" | "Urgent"; // Normal/Urgent kept for backward compat
 
 type Lead = {
   id: string;
@@ -107,15 +108,41 @@ export function FieldSalesExecutive() {
   const [filterPriority, setFilterPriority] = useState("all");
   const [dateFilter, setDateFilter] = useState("");
 
-  const [leadsData, setLeadsData] = useState<Lead[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  // ── Persistent leads cache ───────────────────────────────────────────────
+  // Initialise from localStorage so leads survive page reloads even when the
+  // /leads/all API returns 404 (happens when the server has no data for this user yet).
+  const [leadsData, setLeadsData] = useState<Lead[]>(() => {
+    try {
+      const cached = localStorage.getItem('travo_fse_leads');
+      if (cached) return JSON.parse(cached) as Lead[];
+    } catch {}
+    return [];
+  });
+
+  // Only show the loading spinner on first visit (no cached data).
+  // If we already have cached leads, they render immediately; a silent
+  // background refresh will sync any server updates.
+  const [isLoading, setIsLoading] = useState<boolean>(() => {
+    try {
+      const cached = localStorage.getItem('travo_fse_leads');
+      return !cached || JSON.parse(cached).length === 0;
+    } catch {
+      return true;
+    }
+  });
+  // ─────────────────────────────────────────────────────────────────────────
+
   const [fetchError, setFetchError] = useState("");
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // ─── Fetch leads from API ───────────────────────────────────────────────────
-  const fetchLeads = useCallback(async () => {
+  // silent=true → background refresh: never clears existing data on error
+  const fetchLeads = useCallback(async (silent = false) => {
     try {
-      setIsLoading(true);
-      setFetchError("");
+      if (!silent) {
+        setIsLoading(true);
+        setFetchError("");
+      }
       const data = await getAllLeads();
       // API may return { leads: [...] } or a plain array — handle both
       const rawList: any[] = Array.isArray(data)
@@ -125,19 +152,43 @@ export function FieldSalesExecutive() {
         : Array.isArray(data?.data)
         ? data.data
         : [];
-      setLeadsData(rawList.map(mapApiLead));
+      const mapped = rawList.map(mapApiLead);
+      // Silent background refresh: only update if server returned actual data
+      // Prevents wiping optimistic leads when API returns empty for this user
+      if (!silent || mapped.length > 0) {
+        setLeadsData(mapped);
+        // Persist to localStorage so leads survive page reloads
+        try { localStorage.setItem('travo_fse_leads', JSON.stringify(mapped)); } catch {}
+      }
     } catch (err: any) {
-      console.error("Failed to fetch leads:", err);
-      setFetchError(
-        err?.response?.data?.message || "Failed to load leads. Please try again."
-      );
+      const status = err?.response?.status;
+      if (status === 404) {
+        // 404 = server has no leads for this user yet.
+        // Do NOT clear leadsData — locally-cached / optimistic leads should
+        // remain visible so a reload doesn't make previously-added leads vanish.
+        // isLoading is reset in the finally block below.
+      } else if (!silent) {
+        console.error("Failed to fetch leads:", err);
+        // Never expose raw JS error messages (e.g. "Invalid time value") to user
+        const apiMsg = err?.response?.data?.message;
+        setFetchError(apiMsg || "Failed to load leads. Please try again.");
+      }
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchLeads();
+    // If we already have cached leads, do a silent background refresh so the
+    // user sees data instantly and the API syncs in the background.
+    // If there's no cache, do a full (non-silent) fetch with the loading spinner.
+    const hasCachedLeads = (() => {
+      try {
+        const c = localStorage.getItem('travo_fse_leads');
+        return !!c && JSON.parse(c).length > 0;
+      } catch { return false; }
+    })();
+    fetchLeads(hasCachedLeads); // silent=true when cache exists
   }, [fetchLeads]);
   // ───────────────────────────────────────────────────────────────────────────
 
@@ -147,6 +198,7 @@ export function FieldSalesExecutive() {
   const [uploadSuccess, setUploadSuccess] = useState("");
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const formScrollRef = useRef<HTMLDivElement | null>(null);
 
   const [leadForm, setLeadForm] = useState({
     client: "",
@@ -246,32 +298,87 @@ export function FieldSalesExecutive() {
       return;
     }
 
+    // ── TRUE OPTIMISTIC UPDATE ────────────────────────────────────────────────
+    // 1. Build the lead locally with a temporary ID
+    // 2. Add it to the list + persist to localStorage IMMEDIATELY (before API call)
+    // 3. Close the modal right away so the user sees the lead in the table
+    // 4. Send the API call in the background
+    // 5. On success → replace tempId with real server ID
+    // 6. On failure → remove the optimistic lead + show error
+    // ─────────────────────────────────────────────────────────────────────────
+    const tempId = `local_${Date.now()}`;
+    const budgetNum = Number(String(leadForm.budget ?? "").replace(/[^0-9.]/g, "")) || 0;
+
+    const optimisticLead: Lead = {
+      id: tempId,
+      client: leadForm.client,
+      phone: leadForm.phone,
+      email: leadForm.email,
+      dest: leadForm.dest,
+      travelDate: leadForm.travelDate,
+      days: leadForm.days,
+      nights: leadForm.nights,
+      travellers: leadForm.travellers,
+      budget: budgetNum ? `₹${budgetNum.toLocaleString("en-IN")}` : "₹0",
+      source: leadForm.source,
+      priority: leadForm.priority,
+      assignedLeader: "Auto Assign Pending",
+      status: "new",
+      sla: "OK",
+      date: `Today ${new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}`,
+      dateValue: today,
+      progress: 20,
+      followUpDate: "",
+      remarks: leadForm.remarks,
+    };
+
+    // Add to UI + localStorage BEFORE the API call
+    setLeadsData((prev) => {
+      const updated = [optimisticLead, ...prev];
+      try { localStorage.setItem('travo_fse_leads', JSON.stringify(updated)); } catch {}
+      return updated;
+    });
+
+    // Close modal and reset form immediately — user sees the lead in the table now
+    setShowAddLeadModal(false);
+    resetLeadForm();
+    setUploadSuccess("Lead added! Syncing with server…");
+
+    // API call in background
     try {
       setIsSubmitting(true);
-      const responseData = await createLead(leadForm);
+      const responseData = await createLead({ ...leadForm });
 
-      // API may return the new lead object or wrap it — handle both
-      const rawLead: any =
-        responseData?.lead ??
-        responseData?.data ??
-        responseData;
+      // Replace tempId with the real server ID
+      const rawLead: any = responseData?.lead ?? responseData?.data ?? responseData;
+      const serverId = String(rawLead?.id ?? rawLead?.lead_id ?? rawLead?.leadId ?? tempId);
 
-      if (rawLead && rawLead.id) {
-        // Add the freshly-created lead (mapped) to the top of the list
-        setLeadsData((prev) => [mapApiLead(rawLead), ...prev]);
-      } else {
-        // Fallback: re-fetch all leads to reflect server state
-        await fetchLeads();
+      if (serverId !== tempId) {
+        setLeadsData((prev) => {
+          const updated = prev.map((l) =>
+            l.id === tempId ? { ...l, id: serverId } : l
+          );
+          try { localStorage.setItem('travo_fse_leads', JSON.stringify(updated)); } catch {}
+          return updated;
+        });
       }
 
-      setUploadSuccess("Lead submitted successfully to Team Leader.");
-      setShowAddLeadModal(false);
-      resetLeadForm();
+      setUploadSuccess("Lead submitted successfully to Team Leader. ✓");
       setTimeout(() => setUploadSuccess(""), 4000);
+
+      // Silent background sync to pull any server-side changes
+      fetchLeads(true);
     } catch (err: any) {
-      console.error("Failed to create lead:", err);
+      console.error("Failed to sync lead with server:", err);
+      // Remove the optimistic lead since the server rejected it
+      setLeadsData((prev) => {
+        const updated = prev.filter((l) => l.id !== tempId);
+        try { localStorage.setItem('travo_fse_leads', JSON.stringify(updated)); } catch {}
+        return updated;
+      });
+      setUploadSuccess("");
       setUploadError(
-        err?.response?.data?.message || "Failed to submit lead. Please try again."
+        err?.response?.data?.message || "Failed to save lead to server. Please try again."
       );
     } finally {
       setIsSubmitting(false);
@@ -408,6 +515,14 @@ export function FieldSalesExecutive() {
     XLSX.writeFile(workbook, `field_executive_leads_${today}.xlsx`);
   };
 
+  // Manual refresh — clears the fetch error then re-fetches from server
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    setFetchError("");
+    await fetchLeads(false);
+    setIsRefreshing(false);
+  };
+
   return (
     <div className="flex-1 bg-[#f5f7ff] overflow-auto">
       <div className="mb-6">
@@ -518,7 +633,12 @@ export function FieldSalesExecutive() {
             </div>
 
             <button
-              onClick={() => setShowAddLeadModal(true)}
+              onClick={() => {
+                setShowAddLeadModal(true);
+                setTimeout(() => {
+                  if (formScrollRef.current) formScrollRef.current.scrollTop = 0;
+                }, 50);
+              }}
               className="flex items-center gap-2 px-4 py-2 bg-[#4b49ac] text-white rounded-lg hover:bg-[#4b49ac]/90 transition-colors"
             >
               <Plus className="w-4 h-4" />
@@ -539,6 +659,16 @@ export function FieldSalesExecutive() {
             >
               <Download className="w-4 h-4" />
               <span className="text-sm">Export</span>
+            </button>
+
+            <button
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              title="Refresh leads from server"
+              className="flex items-center gap-2 px-4 py-2 border border-border bg-white rounded-lg hover:bg-sidebar-accent transition-colors disabled:opacity-60"
+            >
+              <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} />
+              <span className="text-sm">{isRefreshing ? "Syncing…" : "Refresh"}</span>
             </button>
           </div>
         </div>
@@ -845,11 +975,20 @@ export function FieldSalesExecutive() {
 
               {!isLoading && filteredLeads.length === 0 && (
                 <tr>
-                  <td
-                    colSpan={13}
-                    className="px-4 py-8 text-center text-muted-foreground"
-                  >
-                    No leads found.
+                  <td colSpan={13} className="px-4 py-10 text-center">
+                    <div className="flex flex-col items-center gap-3">
+                      <Briefcase className="w-10 h-10 text-gray-300" />
+                      <p className="text-sm font-medium text-foreground">No leads found</p>
+                      {filterStatus !== "all" || filterSource !== "all" || filterPriority !== "all" || searchQuery || dateFilter ? (
+                        <p className="text-xs text-muted-foreground">
+                          No results match your current filters. Try clearing them.
+                        </p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground max-w-sm text-center">
+                          No leads yet. Use the <strong>Add Lead</strong> button above to add your first lead.
+                        </p>
+                      )}
+                    </div>
                   </td>
                 </tr>
               )}
@@ -859,8 +998,8 @@ export function FieldSalesExecutive() {
       </div>
 
       {showAddLeadModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-5xl max-h-[92vh] overflow-hidden">
+        <div className="fixed inset-0 bg-black/50 flex items-start justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-5xl my-4 overflow-hidden">
             <div className="flex items-center justify-between px-6 py-4 border-b border-border">
               <div>
                 <h3 className="text-lg font-semibold text-foreground">
@@ -883,7 +1022,7 @@ export function FieldSalesExecutive() {
               </button>
             </div>
 
-            <div className="p-6 overflow-y-auto max-h-[calc(92vh-145px)]">
+            <div ref={formScrollRef} className="p-6">
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                 <div>
                   <label className="text-sm text-muted-foreground mb-1 block">

@@ -63,6 +63,7 @@ export function AddRole() {
   };
   const [newRole, setNewRole] = useState<any>({
     name: '',
+    department_id: '',
     description: '',
     permissions: {},
     menu_ids: []
@@ -125,11 +126,38 @@ export function AddRole() {
     setTimeout(() => setToast(null), 3000);
   };
 
+  const getRoleDepartmentId = (role: any) => {
+    return role?.department_id
+      || role?.departmentId
+      || role?.dept_id
+      || role?.department?.id
+      || '';
+  };
+
+  const getRoleDepartmentName = (role: any) => {
+    // Direct name fields the API might return
+    if (role?.department_name) return role.department_name;
+    if (role?.departmentName) return role.departmentName;
+    if (role?.department?.name) return role.department.name;
+    if (role?.dept?.name) return role.dept.name;
+
+    // Fallback: look up by ID from loaded departments list
+    const departmentId = getRoleDepartmentId(role);
+    if (departmentId) {
+      const dept = activeDepartments.find(
+        (d: any) => String(d.id) === String(departmentId)
+      );
+      if (dept?.name) return dept.name;
+    }
+
+    return 'Not Set';
+  };
+
   const handleCreateRole = async () => {
 
     try {
 
-      if (!newRole.name.trim()) {
+      if (!newRole.name.trim() || !newRole.department_id) {
         return;
       }
 
@@ -164,7 +192,8 @@ export function AddRole() {
         newRole.name,
         newRole.description,
         permissionsArray,
-        newRole.menu_ids
+        newRole.menu_ids,
+        newRole.department_id
       );
 
       if (res?.success) {
@@ -177,6 +206,7 @@ export function AddRole() {
 
         setNewRole({
           name: '',
+          department_id: '',
           description: '',
           permissions: {},
           menu_ids: []
@@ -197,6 +227,7 @@ export function AddRole() {
   const handleEditRole = (role: any) => {
     setEditingRole({
       ...role,
+      department_id: getRoleDepartmentId(role),
       permissions: role.permissions || {},
       menu_ids: role.menu_ids || []
     });
@@ -238,6 +269,7 @@ export function AddRole() {
 
       const payload = {
         role_name: editingRole.role_name,
+        department_id: editingRole.department_id || null,
         description: editingRole.description,
         permissions: permissionsArray,
         menu_ids: editingRole.menu_ids || []
@@ -606,6 +638,7 @@ export function AddRole() {
               <thead className="bg-sidebar-accent">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Role Name</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Department</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Description</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Users</th>
                   <th className="px-4 py-3 text-center text-xs font-medium text-muted-foreground uppercase">Actions</th>
@@ -619,6 +652,11 @@ export function AddRole() {
                         <Shield className="w-4 h-4 text-[#4b49ac]" />
                         <span className="text-sm font-medium text-foreground">{role.role_name}</span>
                       </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="inline-flex px-2 py-1 rounded-full bg-[#4b49ac]/10 text-[#4b49ac] text-xs font-medium">
+                        {getRoleDepartmentName(role)}
+                      </span>
                     </td>
                     <td className="px-4 py-3">
                       <p className="text-sm text-muted-foreground">{role.description}</p>
@@ -726,8 +764,10 @@ export function AddRole() {
                   setShowCreateRoleModal(false);
                   setNewRole({
                     name: '',
+                    department_id: '',
                     description: '',
-                    permissions: {}
+                    permissions: {},
+                    menu_ids: []
                   });
                 }}
                 className="text-muted-foreground hover:text-foreground"
@@ -739,6 +779,22 @@ export function AddRole() {
             <div className="p-6">
               <div className="space-y-6">
                 <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-2">
+                      Select Department <span className="text-red-600">*</span>
+                    </label>
+                    <select
+                      value={newRole.department_id}
+                      onChange={(e) => setNewRole({ ...newRole, department_id: e.target.value })}
+                      className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4b49ac] bg-white"
+                    >
+                      <option value="">Select Department</option>
+                      {activeDepartments.map((dept: any) => (
+                        <option key={dept.id} value={dept.id}>{dept.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-2">
                       Role Name <span className="text-red-600">*</span>
@@ -956,8 +1012,10 @@ export function AddRole() {
                   setShowCreateRoleModal(false);
                   setNewRole({
                     name: '',
+                    department_id: '',
                     description: '',
-                    permissions: {}
+                    permissions: {},
+                    menu_ids: []
                   });
                 }}
                 className="px-6 py-2.5 rounded-lg border border-border bg-white text-foreground hover:bg-muted transition-colors"
@@ -966,7 +1024,7 @@ export function AddRole() {
               </button>
               <button
                 onClick={handleCreateRole}
-                disabled={!newRole.name.trim()}
+                disabled={!newRole.name.trim() || !newRole.department_id}
                 className="px-6 py-2.5 rounded-lg bg-[#4b49ac] text-white hover:bg-[#4b49ac]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 <Shield className="w-4 h-4" />
@@ -1002,6 +1060,22 @@ export function AddRole() {
             <div className="p-6">
               <div className="space-y-6">
                 <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-2">
+                      Select Department <span className="text-red-600">*</span>
+                    </label>
+                    <select
+                      value={editingRole.department_id || ''}
+                      onChange={(e) => setEditingRole({ ...editingRole, department_id: e.target.value })}
+                      className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4b49ac] bg-white"
+                    >
+                      <option value="">Select Department</option>
+                      {activeDepartments.map((dept: any) => (
+                        <option key={dept.id} value={dept.id}>{dept.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-2">
                       Role Name <span className="text-red-600">*</span>
