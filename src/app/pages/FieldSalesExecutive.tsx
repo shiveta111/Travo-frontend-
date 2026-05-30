@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { getAllLeads, createLead, mapApiLead } from "../../api/leads.api";
+import { getSalesTeamLeaders } from "../../api/user.api";
 import {
   Search,
   Plus,
@@ -50,13 +51,8 @@ type Lead = {
   progress: number;
   followUpDate: string;
   remarks: string;
+  aiGenerated?: boolean;
 };
-
-const TEAM_LEADERS = [
-  { id: "TL1", name: "Sales Team Leader - North" },
-  { id: "TL2", name: "Sales Team Leader - South" },
-  { id: "TL3", name: "Sales Team Leader - West" },
-];
 
 const today = new Date().toISOString().split("T")[0];
 
@@ -106,7 +102,8 @@ export function FieldSalesExecutive() {
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterSource, setFilterSource] = useState("all");
   const [filterPriority, setFilterPriority] = useState("all");
-  const [dateFilter, setDateFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   // ── Persistent leads cache ───────────────────────────────────────────────
   // Initialise from localStorage so leads survive page reloads even when the
@@ -134,6 +131,20 @@ export function FieldSalesExecutive() {
 
   const [fetchError, setFetchError] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const [teamLeaders, setTeamLeaders] = useState<{ id: number; name: string }[]>([]);
+
+  useEffect(() => {
+    getSalesTeamLeaders()
+      .then((data: any) => {
+        const list = Array.isArray(data) ? data : Array.isArray(data?.users) ? data.users : Array.isArray(data?.data) ? data.data : [];
+        setTeamLeaders(list.map((u: any) => ({
+          id: Number(u.id ?? u.user_id ?? 0),
+          name: u.full_name ?? ((`${u.first_name ?? ''} ${u.last_name ?? ''}`.trim()) || u.username || 'Unknown'),
+        })));
+      })
+      .catch((err: any) => console.error('Failed to fetch team leaders:', err));
+  }, []);
 
   // ─── Fetch leads from API ───────────────────────────────────────────────────
   // silent=true → background refresh: never clears existing data on error
@@ -250,7 +261,10 @@ export function FieldSalesExecutive() {
     const matchesPriority =
       filterPriority === "all" || lead.priority === filterPriority;
 
-    const matchesDate = !dateFilter || lead.dateValue === dateFilter;
+    const matchesDate = (!dateFrom && !dateTo) ||
+      (dateFrom && dateTo ? lead.dateValue >= dateFrom && lead.dateValue <= dateTo :
+       dateFrom ? lead.dateValue >= dateFrom :
+       lead.dateValue <= dateTo);
 
     return (
       matchesSearch &&
@@ -347,7 +361,7 @@ export function FieldSalesExecutive() {
     // API call in background
     try {
       setIsSubmitting(true);
-      const responseData = await createLead({ ...leadForm });
+      const responseData = await createLead({ ...leadForm, Assigned_tl: 1 });
 
       // Replace tempId with the real server ID
       const rawLead: any = responseData?.lead ?? responseData?.data ?? responseData;
@@ -549,12 +563,21 @@ export function FieldSalesExecutive() {
               />
             </div>
 
-            <input
-              type="date"
-              value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value)}
-              className="px-3 py-2 border border-border rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
-            />
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="px-3 py-2 border border-border rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
+              />
+              <span className="text-sm text-muted-foreground">to</span>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="px-3 py-2 border border-border rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
+              />
+            </div>
 
             <select
               value={filterSource}
@@ -785,7 +808,7 @@ export function FieldSalesExecutive() {
           <div className="m-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between">
             <p className="text-sm text-red-800">{fetchError}</p>
             <button
-              onClick={fetchLeads}
+              onClick={() => fetchLeads(false)}
               className="ml-4 text-xs px-3 py-1 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg transition-colors"
             >
               Retry
@@ -853,8 +876,11 @@ export function FieldSalesExecutive() {
 
                   <td className="px-4 py-3">
                     <div>
-                      <p className="text-sm font-medium text-foreground">
+                      <p className="text-sm font-medium text-foreground flex items-center gap-1 flex-wrap">
                         {lead.client}
+                        {lead.aiGenerated && (
+                          <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-semibold">AI Extracted</span>
+                        )}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         {lead.phone}
@@ -979,7 +1005,7 @@ export function FieldSalesExecutive() {
                     <div className="flex flex-col items-center gap-3">
                       <Briefcase className="w-10 h-10 text-gray-300" />
                       <p className="text-sm font-medium text-foreground">No leads found</p>
-                      {filterStatus !== "all" || filterSource !== "all" || filterPriority !== "all" || searchQuery || dateFilter ? (
+                      {filterStatus !== "all" || filterSource !== "all" || filterPriority !== "all" || searchQuery || dateFrom || dateTo ? (
                         <p className="text-xs text-muted-foreground">
                           No results match your current filters. Try clearing them.
                         </p>

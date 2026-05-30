@@ -680,6 +680,7 @@ export function AddRole() {
                         >
                           <Edit2 className="w-4 h-4 text-purple-600" />
                         </button>
+                        {/* Delete button — hidden, code preserved
                         <button
                           onClick={() => handleDeleteRole(role)}
                           className="p-1.5 rounded hover:bg-red-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -688,6 +689,7 @@ export function AddRole() {
                         >
                           <X className={`w-4 h-4 ${0 > 0 ? 'text-gray-300' : 'text-red-600'}`} />
                         </button>
+                        */}
                       </div>
                     </td>
                   </tr>

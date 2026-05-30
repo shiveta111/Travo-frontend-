@@ -54,7 +54,7 @@ export function Sidebar({ activeModule, onModuleChange }: SidebarProps) {
         if (res?.success && Array.isArray(res.data)) {
           const transformed = res.data.map((m: any) => ({
             id: m.path || String(m.id),
-            label: m.title,
+            label: m.title === 'Sales Team Leader' ? 'Sales Support Team Leader' : m.title,
             icon: IconMap[m.icon] || Circle,
             subItems: Array.isArray(m.subMenus) ? m.subMenus.map((sm: any) => ({
               id: sm.path || String(sm.id),

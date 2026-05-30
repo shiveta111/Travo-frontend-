@@ -344,7 +344,7 @@ export function SalesTeamLeader() {
         <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 mb-4">
           <div>
             <h2 className="text-2xl font-semibold text-foreground">
-              Sales Team Leader
+              Sales Support Team Leader
             </h2>
             <p className="text-sm text-muted-foreground">
               Manage new leads, assignments, team performance and quotations.

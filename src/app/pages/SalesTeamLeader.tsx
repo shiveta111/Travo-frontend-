@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Search,
   Plus,
@@ -15,139 +15,14 @@ import {
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { SalesTeamMemberHistory } from "../sales_team_leader/SalesTeamMemberHistory";
+import { getAllLeads, createLead, assignLeadToUser, getUnassignedLeads, mapApiLead } from "../../api/leads.api";
+import { getSalesTeamLeaders } from "../../api/user.api";
+import { useAuth } from "../../auth/AuthContext";
 
-const LEADS = [
-  {
-    id: "L001",
-    client: "Arjun Sharma",
-    phone: "9876543210",
-    email: "arjun@test.com",
-    dest: "Shimla-Manali",
-    status: "assigned",
-    assignedTo: "E1",
-    assigned: "Priya K",
-    sla: "1h 20m",
-    budget: "₹1.2L",
-    source: "WhatsApp",
-    date: "Today 09:12",
-    dateValue: "2026-05-20",
-    priority: "High",
-    stage: "follow_up",
-    outcome: "hot",
-    progress: 40,
-    nextFollowUp: "2026-05-21",
-    remarks: "Client interested, needs hotel options.",
-  },
-  {
-    id: "L002",
-    client: "Meera Gupta",
-    phone: "9876543211",
-    email: "meera@test.com",
-    dest: "Kerala 7N",
-    status: "quoted",
-    assignedTo: "E2",
-    assigned: "Rahul M",
-    sla: "OK",
-    budget: "₹2.8L",
-    source: "Agency",
-    date: "Today 08:45",
-    dateValue: "2026-05-20",
-    priority: "Normal",
-    stage: "quotation",
-    outcome: "ongoing",
-    progress: 70,
-    nextFollowUp: "2026-05-22",
-    remarks: "Quotation shared.",
-  },
-  {
-    id: "L003",
-    client: "Dev Patel",
-    phone: "9876543212",
-    email: "dev@test.com",
-    dest: "Goa Package",
-    status: "new",
-    assignedTo: "",
-    assigned: "—",
-    sla: "BREACH",
-    budget: "₹85K",
-    source: "Campaign",
-    date: "Today 10:01",
-    dateValue: "2026-05-20",
-    priority: "Urgent",
-    stage: "new",
-    outcome: "pending",
-    progress: 0,
-    nextFollowUp: "",
-    remarks: "",
-  },
-  {
-    id: "L004",
-    client: "Sneha Rao",
-    phone: "9876543213",
-    email: "sneha@test.com",
-    dest: "Rajasthan Tour",
-    status: "converted",
-    assignedTo: "E3",
-    assigned: "Amit S",
-    sla: "OK",
-    budget: "₹3.5L",
-    source: "Field",
-    date: "Yesterday",
-    dateValue: "2026-05-19",
-    priority: "High",
-    stage: "booking",
-    outcome: "success",
-    progress: 100,
-    nextFollowUp: "",
-    remarks: "Booking completed.",
-  },
-  {
-    id: "L005",
-    client: "Rohan Das",
-    phone: "9876543214",
-    email: "rohan@test.com",
-    dest: "Andaman 5N",
-    status: "lost",
-    assignedTo: "E1",
-    assigned: "Priya K",
-    sla: "—",
-    budget: "₹1.8L",
-    source: "WhatsApp",
-    date: "Yesterday",
-    dateValue: "2026-05-19",
-    priority: "Normal",
-    stage: "closed",
-    outcome: "lost",
-    progress: 100,
-    nextFollowUp: "",
-    remarks: "Client dropped plan.",
-  },
-];
-
+// ─── Static fallback quotations (no API yet) ─────────────────────────────────
 const QUOTATIONS = [
-  {
-    id: "Q041",
-    client: "Arjun Sharma",
-    pkg: "Shimla-Manali 6N7D",
-    amount: "₹1,24,500",
-    status: "pending_approval",
-    created: "2h ago",
-  },
-  {
-    id: "Q042",
-    client: "Meera Gupta",
-    pkg: "Kerala Backwaters 7N",
-    amount: "₹2,84,000",
-    status: "sent",
-    created: "5h ago",
-  },
-];
-
-const TEAM_MEMBERS = [
-  { id: "E1", name: "Priya K", role: "Field Exec" },
-  { id: "E2", name: "Rahul M", role: "Field Exec" },
-  { id: "E3", name: "Amit S", role: "Field Exec" },
-  { id: "E4", name: "Ravi K", role: "Field Exec" },
+  { id: "Q041", client: "Arjun Sharma",  pkg: "Shimla-Manali 6N7D",   amount: "₹1,24,500", status: "pending_approval" },
+  { id: "Q042", client: "Meera Gupta",   pkg: "Kerala Backwaters 7N", amount: "₹2,84,000", status: "sent" },
 ];
 
 const today = new Date().toISOString().split("T")[0];
@@ -162,7 +37,6 @@ const getStatusColor = (status: string) => {
     BREACH: "bg-red-100 text-red-700",
     OK: "bg-green-100 text-green-700",
   };
-
   return statusMap[status] || "bg-gray-100 text-gray-700";
 };
 
@@ -173,89 +47,219 @@ const getSLAColor = (sla: string) => {
 };
 
 export function SalesTeamLeader() {
+  const { user } = useAuth() as any;
+
+  // ── UI state (identical to original) ────────────────────────────────────────
   const [showForm, setShowForm] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterMember, setFilterMember] = useState("all");
-  const [dateFilter, setDateFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [selectedMember, setSelectedMember] = useState<string | null>(null);
   const [openHistory, setOpenHistory] = useState(false);
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
-  const [leadsData, setLeadsData] = useState(LEADS);
+  const [leadsData, setLeadsData] = useState<any[]>([]);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadedFileName, setUploadedFileName] = useState("");
   const [uploadError, setUploadError] = useState("");
   const [uploadSuccess, setUploadSuccess] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const selectedMemberData = TEAM_MEMBERS.find((m) => m.id === selectedMember);
+  // ── Dynamic team members (replaces static TEAM_MEMBERS) ──────────────────────
+  const [teamMembers, setTeamMembers] = useState<{ id: string; name: string; role: string }[]>([]);
 
-  const stats = useMemo(() => {
-    return {
-      todaysNewLeads: leadsData.filter((l) => l.dateValue === today).length,
-      todaysAssignedLeads: leadsData.filter(
-        (l) => l.dateValue === today && l.assignedTo
-      ).length,
-      unassignedLeads: leadsData.filter((l) => l.status === "new").length,
-      teamActive: TEAM_MEMBERS.length,
-      pendingApproval: QUOTATIONS.filter(
-        (q) => q.status === "pending_approval"
-      ).length,
-      slaBreaches: leadsData.filter((l) => l.sla === "BREACH").length,
-    };
-  }, [leadsData]);
+  // ── Unassigned leads (fetched separately for the queue) ─────────────────────
+  const [unassignedLeads, setUnassignedLeads] = useState<any[]>([]);
+
+  // ── Assign panel state (needed so Confirm button actually works) ───────────
+  const [assignToMemberId, setAssignToMemberId] = useState("");
+  const [assignPriority, setAssignPriority] = useState("Normal");
+  const [isAssigning, setIsAssigning] = useState(false);
+
+  // ── Lead detail view ─────────────────────────────────────────────────────────
+  const [viewLead, setViewLead] = useState<any | null>(null);
+
+  // ── Add lead form state ──────────────────────────────────────────────────────
+  const [leadForm, setLeadForm] = useState({
+    client: "", phone: "", email: "", dest: "", budget: "",
+    travelDate: "", days: "", nights: "", travellers: "",
+    source: "Field Visit", priority: "Normal", assignedTo: "",
+    followUpDate: "", remarks: "",
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // ── Fetch leads ──────────────────────────────────────────────────────────────
+  const fetchLeads = useCallback(async () => {
+    try {
+      const data = await getAllLeads();
+      const rawList: any[] = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.leads) ? data.leads
+        : Array.isArray(data?.data)  ? data.data
+        : [];
+      setLeadsData(rawList.map(mapApiLead));
+    } catch (err) {
+      console.error("Failed to fetch leads:", err);
+    }
+  }, []);
+
+  // ── Fetch team members (field-level users under this TL) ─────────────────────
+  const fetchTeamMembers = useCallback(async () => {
+    const normalise = (data: any): any[] =>
+      Array.isArray(data)          ? data
+      : Array.isArray(data?.users) ? data.users
+      : Array.isArray(data?.data)  ? data.data
+      : [];
+
+    const toMember = (u: any) => ({
+      id:   String(u.id ?? u.user_id ?? ''),
+      name: u.full_name ?? ((`${u.first_name ?? ''} ${u.last_name ?? ''}`.trim()) || u.username || 'Unknown'),
+      role: u.role_name ?? u.role ?? 'Field Exec',
+    });
+
+    try {
+      const data = await getSalesTeamLeaders();
+      const rawList = normalise(data);
+      const mapped = rawList.map(toMember).filter((m) => m.id !== '');
+      setTeamMembers(mapped);
+      if (mapped.length > 0) setAssignToMemberId(mapped[0].id);
+    } catch (err) {
+      console.error('Failed to fetch team members:', err);
+    }
+  }, [user]);
+
+  // ── Fetch unassigned leads ───────────────────────────────────────────────────
+  const fetchUnassigned = useCallback(async () => {
+    try {
+      const data = await getUnassignedLeads();
+      const rawList: any[] = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.leads) ? data.leads
+        : Array.isArray(data?.data)  ? data.data
+        : [];
+      setUnassignedLeads(rawList.map(mapApiLead));
+    } catch (err) {
+      console.error('Failed to fetch unassigned leads:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchLeads();
+    fetchTeamMembers();
+    fetchUnassigned();
+  }, [fetchLeads, fetchTeamMembers, fetchUnassigned]);
+
+  // ── Derived (selectedMemberData used for history view) ─────────────────────
+  const selectedMemberData = teamMembers.find((m) => m.id === selectedMember);
+
+  const stats = useMemo(() => ({
+    todaysNewLeads:    leadsData.filter((l) => l.dateValue === today).length,
+    todaysAssignedLeads: leadsData.filter((l) => l.dateValue === today && l.assignedTo).length,
+    unassignedLeads:   leadsData.filter((l) => l.status === "new").length,
+    teamActive:        teamMembers.length,
+    pendingApproval:   QUOTATIONS.filter((q) => q.status === "pending_approval").length,
+    slaBreaches:       leadsData.filter((l) => l.sla === "BREACH").length,
+  }), [leadsData, teamMembers]);
 
   const filteredLeads = leadsData.filter((lead) => {
     const search = searchQuery.toLowerCase();
-
     const matchesSearch =
       lead.client.toLowerCase().includes(search) ||
       lead.dest.toLowerCase().includes(search) ||
       lead.id.toLowerCase().includes(search);
-
-    const matchesStatus =
-      filterStatus === "all" || lead.status === filterStatus;
-
-    const matchesMember =
-      filterMember === "all" || lead.assignedTo === filterMember;
-
-    const matchesDate = !dateFilter || lead.dateValue === dateFilter;
-
+    const matchesStatus = filterStatus === "all" || lead.status === filterStatus;
+    const matchesMember = filterMember === "all" || lead.assignedTo === filterMember;
+    const matchesDate   = (!dateFrom && !dateTo) ||
+      (dateFrom && dateTo ? lead.dateValue >= dateFrom && lead.dateValue <= dateTo :
+       dateFrom ? lead.dateValue >= dateFrom :
+       lead.dateValue <= dateTo);
     return matchesSearch && matchesStatus && matchesMember && matchesDate;
   });
 
+  // ── Confirm assignment ───────────────────────────────────────────────────────
+  const handleConfirmAssignment = async () => {
+    if (!selectedLeadId) return;
+    setIsAssigning(true);
+    try {
+      if (assignToMemberId) {
+        await assignLeadToUser(selectedLeadId, Number(assignToMemberId));
+        // Update locally so UI reflects immediately
+        const memberName = teamMembers.find((m) => m.id === assignToMemberId)?.name ?? "—";
+        setLeadsData((prev) =>
+          prev.map((l) =>
+            l.id === selectedLeadId
+              ? { ...l, status: "assigned", assignedTo: assignToMemberId, assigned: memberName, priority: assignPriority }
+              : l
+          )
+        );
+        setUploadSuccess("Lead assigned successfully!");
+        setTimeout(() => setUploadSuccess(""), 3000);
+      }
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || "Failed to assign lead.";
+      setUploadError(msg);
+      setTimeout(() => setUploadError(""), 4000);
+    } finally {
+      setIsAssigning(false);
+      setSelectedLeadId(null);
+    }
+  };
+
+  // ── Add Lead form submit ─────────────────────────────────────────────────────
+  const handleLeadInput = (field: keyof typeof leadForm, value: string) =>
+    setLeadForm((prev) => ({ ...prev, [field]: value }));
+
+  const resetLeadForm = () => setLeadForm({
+    client: "", phone: "", email: "", dest: "", budget: "",
+    travelDate: "", days: "", nights: "", travellers: "",
+    source: "Field Visit", priority: "Normal", assignedTo: "",
+    followUpDate: "", remarks: "",
+  });
+
+  const submitLead = async () => {
+    if (!leadForm.client || !leadForm.phone || !leadForm.dest) {
+      alert("Please fill Client Name, Phone Number and Destination.");
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      const responseData = await createLead({ ...leadForm });
+      const rawLead: any = responseData?.lead ?? responseData?.data ?? responseData;
+      const newLead = mapApiLead(rawLead);
+      setLeadsData((prev) => [newLead, ...prev]);
+      setShowForm(false);
+      resetLeadForm();
+      setUploadSuccess("Lead created successfully!");
+      setTimeout(() => setUploadSuccess(""), 3000);
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || "Failed to create lead.";
+      setUploadError(msg);
+      setTimeout(() => setUploadError(""), 4000);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // ── File import (unchanged from original) ───────────────────────────────────
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-
     setUploadError("");
     setUploadSuccess("");
     setUploadedFileName(file.name);
-
-    const isValid =
-      file.name.endsWith(".xlsx") ||
-      file.name.endsWith(".xls") ||
-      file.name.endsWith(".csv");
-
-    if (!isValid) {
-      setUploadError("Please upload a valid Excel or CSV file.");
-      return;
-    }
-
+    const isValid = file.name.endsWith(".xlsx") || file.name.endsWith(".xls") || file.name.endsWith(".csv");
+    if (!isValid) { setUploadError("Please upload a valid Excel or CSV file."); return; }
     const reader = new FileReader();
-
     reader.onload = (e) => {
       try {
         const data = new Uint8Array(e.target?.result as ArrayBuffer);
         const workbook = XLSX.read(data, { type: "array" });
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
         const jsonData: any[] = XLSX.utils.sheet_to_json(sheet);
-
         const mappedLeads = jsonData.map((row, index) => {
-          const importedDate =
-            row["Date"] || row["date"] || new Date().toISOString().split("T")[0];
-
+          const importedDate = row["Date"] || row["date"] || new Date().toISOString().split("T")[0];
           return {
             id: row["ID"] || row["id"] || `L${1000 + index}`,
             client: row["Client"] || row["Client Name"] || "",
@@ -278,7 +282,6 @@ export function SalesTeamLeader() {
             remarks: row["Remarks"] || "",
           };
         });
-
         setLeadsData((prev) => [...prev, ...mappedLeads]);
         setUploadSuccess(`Successfully imported ${mappedLeads.length} leads.`);
         setShowUploadModal(false);
@@ -287,47 +290,32 @@ export function SalesTeamLeader() {
         setUploadError("Failed to parse file. Please check file format.");
       }
     };
-
     reader.readAsArrayBuffer(file);
   };
 
   const downloadTemplate = () => {
-    const templateData = [
-      {
-        ID: "L001",
-        Client: "Client Name",
-        Phone: "9876543210",
-        Email: "client@email.com",
-        Destination: "Shimla-Manali",
-        Status: "new",
-        "Assigned Member ID": "E1",
-        "Assigned To": "Priya K",
-        SLA: "OK",
-        Budget: "₹1,00,000",
-        Source: "Field Visit",
-        Date: today,
-        Priority: "Normal",
-        Stage: "new",
-        Outcome: "pending",
-        Progress: 0,
-        "Next Follow Up": today,
-        Remarks: "Client remarks",
-      },
-    ];
-
+    const templateData = [{
+      ID: "L001", Client: "Client Name", Phone: "9876543210",
+      Email: "client@email.com", Destination: "Shimla-Manali",
+      Status: "new", "Assigned Member ID": "E1", "Assigned To": "Priya K",
+      SLA: "OK", Budget: "₹1,00,000", Source: "Field Visit", Date: today,
+      Priority: "Normal", Stage: "new", Outcome: "pending", Progress: 0,
+      "Next Follow Up": today, Remarks: "Client remarks",
+    }];
     const worksheet = XLSX.utils.json_to_sheet(templateData);
-    const workbook = XLSX.utils.book_new();
+    const workbook  = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Leads");
     XLSX.writeFile(workbook, "leads_template.xlsx");
   };
 
   const exportLeads = () => {
     const worksheet = XLSX.utils.json_to_sheet(filteredLeads);
-    const workbook = XLSX.utils.book_new();
+    const workbook  = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Leads");
     XLSX.writeFile(workbook, `leads_${today}.xlsx`);
   };
 
+  // ── History view (unchanged from original) ──────────────────────────────────
   if (openHistory && selectedMemberData) {
     return (
       <SalesTeamMemberHistory
@@ -338,13 +326,16 @@ export function SalesTeamLeader() {
     );
   }
 
+  // ────────────────────────────────────────────────────────────────────────────
+  // RENDER — identical JSX to original, only TEAM_MEMBERS → teamMembers
+  // ────────────────────────────────────────────────────────────────────────────
   return (
     <div className="flex-1 bg-[#f5f7ff] overflow-auto">
       <div className="mb-6">
         <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 mb-4">
           <div>
             <h2 className="text-2xl font-semibold text-foreground">
-              Sales Team Leader
+              Sales Support Team Leader
             </h2>
             <p className="text-sm text-muted-foreground">
               Manage new leads, assignments, team performance and quotations.
@@ -363,12 +354,23 @@ export function SalesTeamLeader() {
               />
             </div>
 
-            <input
-              type="date"
-              value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value)}
-              className="px-3 py-2 border border-border rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
-            />
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="px-3 py-2 border border-border rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
+                placeholder="From"
+              />
+              <span className="text-sm text-muted-foreground">to</span>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="px-3 py-2 border border-border rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
+                placeholder="To"
+              />
+            </div>
 
             <select
               value={filterMember}
@@ -376,7 +378,7 @@ export function SalesTeamLeader() {
               className="px-3 py-2 border border-border rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
             >
               <option value="all">All Members</option>
-              {TEAM_MEMBERS.map((m) => (
+              {teamMembers.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.name}
                 </option>
@@ -468,19 +470,17 @@ export function SalesTeamLeader() {
         )}
       </div>
 
+      {/* ── Stats cards ── */}
       <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
         {[
-          ["Today's Leads", stats.todaysNewLeads, Briefcase],
+          ["Today's Leads",    stats.todaysNewLeads,     Briefcase],
           ["Today's Assigned", stats.todaysAssignedLeads, Users],
-          ["Unassigned", stats.unassignedLeads, AlertCircle],
-          ["Team Active", stats.teamActive, CheckCircle],
-          ["Pending Approval", stats.pendingApproval, TrendingUp],
-          ["SLA Breaches", stats.slaBreaches, AlertCircle],
+          ["Unassigned",       stats.unassignedLeads,    AlertCircle],
+          ["Team Active",      stats.teamActive,         CheckCircle],
+          ["Pending Approval", stats.pendingApproval,    TrendingUp],
+          ["SLA Breaches",     stats.slaBreaches,        AlertCircle],
         ].map(([label, value, Icon]: any) => (
-          <div
-            key={label}
-            className="bg-white p-4 rounded-lg border border-border shadow-sm"
-          >
+          <div key={label} className="bg-white p-4 rounded-lg border border-border shadow-sm">
             <div className="flex items-center justify-between mb-2">
               <p className="text-sm text-muted-foreground">{label}</p>
               <Icon className="w-5 h-5 text-[#4b49ac]" />
@@ -490,6 +490,7 @@ export function SalesTeamLeader() {
         ))}
       </div>
 
+      {/* ── Team Members ── */}
       <div className="mb-6">
         <h3 className="text-foreground font-semibold mb-1">Team Members</h3>
         <p className="text-xs text-muted-foreground mb-3">
@@ -497,17 +498,11 @@ export function SalesTeamLeader() {
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-          {TEAM_MEMBERS.map((m) => {
-            const memberLeads = leadsData.filter((l) => l.assignedTo === m.id);
-            const todayAssigned = memberLeads.filter(
-              (l) => l.dateValue === today
-            ).length;
-            const converted = memberLeads.filter(
-              (l) => l.status === "converted"
-            ).length;
-            const pending = memberLeads.filter(
-              (l) => !["converted", "lost"].includes(l.status)
-            ).length;
+          {teamMembers.map((m) => {
+            const memberLeads   = leadsData.filter((l) => l.assignedTo === m.id);
+            const todayAssigned = memberLeads.filter((l) => l.dateValue === today).length;
+            const converted     = memberLeads.filter((l) => l.status === "converted").length;
+            const pending       = memberLeads.filter((l) => !["converted", "lost"].includes(l.status)).length;
 
             return (
               <div
@@ -518,10 +513,7 @@ export function SalesTeamLeader() {
                     : "border-border"
                 }`}
               >
-                <button
-                  onClick={() => setSelectedMember(m.id)}
-                  className="w-full text-left"
-                >
+                <button onClick={() => setSelectedMember(m.id)} className="w-full text-left">
                   <h4 className="font-semibold text-foreground">{m.name}</h4>
                   <p className="text-xs text-muted-foreground mb-3">{m.role}</p>
 
@@ -553,10 +545,7 @@ export function SalesTeamLeader() {
                     View Today
                   </button>
                   <button
-                    onClick={() => {
-                      setSelectedMember(m.id);
-                      setOpenHistory(true);
-                    }}
+                    onClick={() => { setSelectedMember(m.id); setOpenHistory(true); }}
                     className="flex-1 px-3 py-2 text-xs rounded-lg bg-[#4b49ac] text-white hover:bg-[#4b49ac]/90"
                   >
                     See History
@@ -568,250 +557,185 @@ export function SalesTeamLeader() {
         </div>
       </div>
 
+      {/* ── Today's view for selected member ── */}
       {selectedMember && (
         <div className="bg-white rounded-lg border border-border p-4 mb-6">
           <div className="flex justify-between mb-3">
             <div>
               <h4 className="font-semibold">
-                {TEAM_MEMBERS.find((m) => m.id === selectedMember)?.name} -
+                {teamMembers.find((m) => m.id === selectedMember)?.name} -
                 Today's Assigned Leads
               </h4>
-              <p className="text-xs text-muted-foreground">
-                Quick view of today's work.
-              </p>
+              <p className="text-xs text-muted-foreground">Quick view of today's work.</p>
             </div>
-            <button
-              onClick={() => setSelectedMember(null)}
-              className="text-sm text-muted-foreground"
-            >
+            <button onClick={() => setSelectedMember(null)} className="text-sm text-muted-foreground">
               Close
             </button>
           </div>
 
           <div className="space-y-3">
             {leadsData
-              .filter(
-                (l) => l.assignedTo === selectedMember && l.dateValue === today
-              )
+              .filter((l) => l.assignedTo === selectedMember && l.dateValue === today)
               .map((lead) => (
-                <div
-                  key={lead.id}
-                  className="border border-border rounded-lg p-3"
-                >
+                <div key={lead.id} className="border border-border rounded-lg p-3">
                   <div className="flex justify-between">
                     <div>
-                      <p className="font-medium text-sm">{lead.client}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {lead.dest} · {lead.source}
+                      <p className="font-medium text-sm flex items-center gap-1 flex-wrap">
+                        {lead.client}
+                        {lead.aiGenerated && (
+                          <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-semibold">AI Extracted</span>
+                        )}
                       </p>
+                      <p className="text-xs text-muted-foreground">{lead.dest} · {lead.source}</p>
                     </div>
-                    <span
-                      className={`text-xs px-2 py-1 rounded-full ${getStatusColor(
-                        lead.status
-                      )}`}
-                    >
+                    <span className={`text-xs px-2 py-1 rounded-full ${getStatusColor(lead.status)}`}>
                       {lead.status}
                     </span>
                   </div>
-
                   <div className="w-full bg-gray-200 rounded-full h-2 mt-3">
-                    <div
-                      className="h-2 rounded-full bg-[#4b49ac]"
-                      style={{ width: `${lead.progress}%` }}
-                    />
+                    <div className="h-2 rounded-full bg-[#4b49ac]" style={{ width: `${lead.progress}%` }} />
                   </div>
                 </div>
               ))}
-
-            {leadsData.filter(
-              (l) => l.assignedTo === selectedMember && l.dateValue === today
-            ).length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                No leads assigned today.
-              </p>
+            {leadsData.filter((l) => l.assignedTo === selectedMember && l.dateValue === today).length === 0 && (
+              <p className="text-sm text-muted-foreground">No leads assigned today.</p>
             )}
           </div>
         </div>
       )}
 
+      {/* ── Add Lead modal (same JSX as original + controlled inputs + API call) ── */}
       {showForm && (
-  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-    <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
-      
-      <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-        <div>
-          <h3 className="text-lg font-semibold text-foreground">Add New Lead</h3>
-          <p className="text-xs text-muted-foreground">
-            Enter client travel enquiry details and assign to team member if required.
-          </p>
-        </div>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
 
-        <button
-          onClick={() => setShowForm(false)}
-          className="p-2 rounded-lg hover:bg-gray-100 text-muted-foreground"
-        >
-          <X className="w-5 h-5" />
-        </button>
-      </div>
-
-      <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {[
-            "Client Name",
-            "Phone Number",
-            "Email Address",
-            "Destination",
-            "Approx Budget",
-          ].map((label) => (
-            <div key={label}>
-              <label className="text-sm text-muted-foreground mb-1 block">
-                {label}
-              </label>
-              <input
-                type={
-                  label === "Email Address"
-                    ? "email"
-                    : label === "Phone Number"
-                    ? "tel"
-                    : "text"
-                }
-                placeholder={label}
-                className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
-              />
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+              <div>
+                <h3 className="text-lg font-semibold text-foreground">Add New Lead</h3>
+                <p className="text-xs text-muted-foreground">
+                  Enter client travel enquiry details and assign to team member if required.
+                </p>
+              </div>
+              <button
+                onClick={() => { setShowForm(false); resetLeadForm(); }}
+                className="p-2 rounded-lg hover:bg-gray-100 text-muted-foreground"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
-          ))}
 
-          <div>
-            <label className="text-sm text-muted-foreground mb-1 block">
-              Travel Date
-            </label>
-            <input
-              type="date"
-              className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
-            />
-          </div>
+            <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {(["Client Name", "Phone Number", "Email Address", "Destination", "Approx Budget"] as const).map((label) => {
+                  const fieldMap: Record<string, keyof typeof leadForm> = {
+                    "Client Name": "client", "Phone Number": "phone",
+                    "Email Address": "email", "Destination": "dest", "Approx Budget": "budget",
+                  };
+                  return (
+                    <div key={label}>
+                      <label className="text-sm text-muted-foreground mb-1 block">{label}</label>
+                      <input
+                        type={label === "Email Address" ? "email" : label === "Phone Number" ? "tel" : "text"}
+                        placeholder={label}
+                        value={leadForm[fieldMap[label]]}
+                        onChange={(e) => handleLeadInput(fieldMap[label], e.target.value)}
+                        className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
+                      />
+                    </div>
+                  );
+                })}
 
-          <div>
-            <label className="text-sm text-muted-foreground mb-1 block">
-              Days
-            </label>
-            <input
-              type="number"
-              min={1}
-              placeholder="Days"
-              className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
-            />
-          </div>
+                <div>
+                  <label className="text-sm text-muted-foreground mb-1 block">Travel Date</label>
+                  <input type="date" value={leadForm.travelDate}
+                    onChange={(e) => handleLeadInput("travelDate", e.target.value)}
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#4b49ac]" />
+                </div>
 
-          <div>
-            <label className="text-sm text-muted-foreground mb-1 block">
-              Nights
-            </label>
-            <input
-              type="number"
-              min={1}
-              placeholder="Nights"
-              className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
-            />
-          </div>
+                <div>
+                  <label className="text-sm text-muted-foreground mb-1 block">Days</label>
+                  <input type="number" min={1} placeholder="Days" value={leadForm.days}
+                    onChange={(e) => handleLeadInput("days", e.target.value)}
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#4b49ac]" />
+                </div>
 
-          <div>
-            <label className="text-sm text-muted-foreground mb-1 block">
-              No. of Travellers
-            </label>
-            <input
-              type="number"
-              min={1}
-              placeholder="Travellers"
-              className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
-            />
-          </div>
+                <div>
+                  <label className="text-sm text-muted-foreground mb-1 block">Nights</label>
+                  <input type="number" min={1} placeholder="Nights" value={leadForm.nights}
+                    onChange={(e) => handleLeadInput("nights", e.target.value)}
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#4b49ac]" />
+                </div>
 
-          <div>
-            <label className="text-sm text-muted-foreground mb-1 block">
-              Lead Source
-            </label>
-            <select className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#4b49ac]">
-              <option>Field Visit</option>
-              <option>WhatsApp</option>
-              <option>Campaign</option>
-              <option>Reference</option>
-              <option>Existing Agent</option>
-              <option>Social Media</option>
-              <option>Website</option>
-              <option>B2B Portal</option>
-              <option>Exhibition/Event</option>
-            </select>
-          </div>
+                <div>
+                  <label className="text-sm text-muted-foreground mb-1 block">No. of Travellers</label>
+                  <input type="number" min={1} placeholder="Travellers" value={leadForm.travellers}
+                    onChange={(e) => handleLeadInput("travellers", e.target.value)}
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#4b49ac]" />
+                </div>
 
-          <div>
-            <label className="text-sm text-muted-foreground mb-1 block">
-              Priority
-            </label>
-            <select className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#4b49ac]">
-              <option>Normal</option>
-              <option>High</option>
-              <option>Urgent</option>
-            </select>
-          </div>
+                <div>
+                  <label className="text-sm text-muted-foreground mb-1 block">Lead Source</label>
+                  <select value={leadForm.source} onChange={(e) => handleLeadInput("source", e.target.value)}
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#4b49ac]">
+                    <option>Field Visit</option><option>WhatsApp</option><option>Campaign</option>
+                    <option>Reference</option><option>Existing Agent</option><option>Social Media</option>
+                    <option>Website</option><option>B2B Portal</option><option>Exhibition/Event</option>
+                  </select>
+                </div>
 
-          <div>
-            <label className="text-sm text-muted-foreground mb-1 block">
-              Assign To
-            </label>
-            <select className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#4b49ac]">
-              <option value="">Unassigned</option>
-              {TEAM_MEMBERS.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
-          </div>
+                <div>
+                  <label className="text-sm text-muted-foreground mb-1 block">Priority</label>
+                  <select value={leadForm.priority} onChange={(e) => handleLeadInput("priority", e.target.value)}
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#4b49ac]">
+                    <option>Normal</option><option>High</option><option>Urgent</option>
+                  </select>
+                </div>
 
-          <div>
-            <label className="text-sm text-muted-foreground mb-1 block">
-              Follow-up Date
-            </label>
-            <input
-              type="date"
-              className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
-            />
+                <div>
+                  <label className="text-sm text-muted-foreground mb-1 block">Assign To</label>
+                  <select value={leadForm.assignedTo} onChange={(e) => handleLeadInput("assignedTo", e.target.value)}
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#4b49ac]">
+                    <option value="">Unassigned</option>
+                    {teamMembers.map((m) => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-sm text-muted-foreground mb-1 block">Follow-up Date</label>
+                  <input type="date" value={leadForm.followUpDate}
+                    onChange={(e) => handleLeadInput("followUpDate", e.target.value)}
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#4b49ac]" />
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <label className="text-sm text-muted-foreground mb-1 block">Remarks / Special Requirements</label>
+                <textarea rows={4} value={leadForm.remarks}
+                  onChange={(e) => handleLeadInput("remarks", e.target.value)}
+                  placeholder="Add client requirements, hotel preference, budget notes, etc."
+                  className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#4b49ac]" />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 px-6 py-4 border-t border-border bg-[#f8fafc]">
+              <button onClick={() => { setShowForm(false); resetLeadForm(); }}
+                className="px-4 py-2 border border-border rounded-lg text-sm text-foreground bg-white hover:bg-sidebar-accent">
+                Cancel
+              </button>
+              <button onClick={submitLead} disabled={isSubmitting}
+                className="px-4 py-2 bg-[#4b49ac] text-white rounded-lg text-sm hover:bg-[#4b49ac]/90 disabled:opacity-60">
+                {isSubmitting ? "Submitting…" : "Submit Lead"}
+              </button>
+            </div>
           </div>
         </div>
+      )}
 
-        <div className="mt-4">
-          <label className="text-sm text-muted-foreground mb-1 block">
-            Remarks / Special Requirements
-          </label>
-          <textarea
-            rows={4}
-            placeholder="Add client requirements, hotel preference, budget notes, etc."
-            className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
-          />
-        </div>
-      </div>
-
-      <div className="flex justify-end gap-3 px-6 py-4 border-t border-border bg-[#f8fafc]">
-        <button
-          onClick={() => setShowForm(false)}
-          className="px-4 py-2 border border-border rounded-lg text-sm text-foreground bg-white hover:bg-sidebar-accent"
-        >
-          Cancel
-        </button>
-
-        <button
-          onClick={() => setShowForm(false)}
-          className="px-4 py-2 bg-[#4b49ac] text-white rounded-lg text-sm hover:bg-[#4b49ac]/90"
-        >
-          Submit Lead
-        </button>
-      </div>
-    </div>
-  </div>
-)}
-
+      {/* ── Bottom panels ── */}
       <div className="grid xl:grid-cols-2 gap-4">
+        {/* Unassigned Lead Queue */}
         <div className="bg-white rounded-lg border border-border shadow-sm p-6">
           <h3 className="font-semibold mb-1">Unassigned Lead Queue</h3>
           <p className="text-xs text-muted-foreground mb-4">Action required</p>
@@ -822,6 +746,7 @@ export function SalesTeamLeader() {
                 <tr>
                   <th className="px-3 py-3 text-left">ID</th>
                   <th className="px-3 py-3 text-left">Client</th>
+                  <th className="px-3 py-3 text-left">Phone</th>
                   <th className="px-3 py-3 text-left">Destination</th>
                   <th className="px-3 py-3 text-left">Budget</th>
                   <th className="px-3 py-3 text-left">SLA</th>
@@ -829,73 +754,94 @@ export function SalesTeamLeader() {
                 </tr>
               </thead>
               <tbody>
-                {leadsData
-                  .filter((l) => l.status === "new")
-                  .map((lead) => (
-                    <tr key={lead.id} className="border-t border-border">
+                {unassignedLeads.map((lead) => (
+                  <React.Fragment key={lead.id}>
+                    <tr className="border-t border-border">
                       <td className="px-3 py-3">{lead.id}</td>
                       <td className="px-3 py-3">
-                        <p className="font-medium">{lead.client}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {lead.source}
+                        <p className="font-medium flex items-center gap-1 flex-wrap">
+                          {lead.client}
+                          {lead.aiGenerated && (
+                            <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-semibold">AI Extracted</span>
+                          )}
                         </p>
+                        <p className="text-xs text-muted-foreground">{lead.source}</p>
                       </td>
+                      <td className="px-3 py-3">{lead.phone || "—"}</td>
                       <td className="px-3 py-3">{lead.dest}</td>
-                      <td className="px-3 py-3 font-semibold text-teal-600">
-                        {lead.budget}
-                      </td>
-                      <td className={`px-3 py-3 ${getSLAColor(lead.sla)}`}>
-                        {lead.sla}
-                      </td>
+                      <td className="px-3 py-3 font-semibold text-teal-600">{lead.budget}</td>
+                      <td className={`px-3 py-3 ${getSLAColor(lead.sla)}`}>{lead.sla}</td>
                       <td className="px-3 py-3">
                         <button
-                          onClick={() => setSelectedLeadId(lead.id)}
-                          className="px-3 py-2 text-xs rounded-lg bg-[#4b49ac] text-white"
+                          onClick={() => {
+                            setSelectedLeadId(selectedLeadId === lead.id ? null : lead.id);
+                            if (teamMembers.length > 0 && !assignToMemberId) {
+                              setAssignToMemberId(teamMembers[0].id);
+                            }
+                          }}
+                          className={`px-3 py-2 text-xs rounded-lg ${selectedLeadId === lead.id ? 'bg-gray-400 text-white' : 'bg-[#4b49ac] text-white'}`}
                         >
-                          Assign
+                          {selectedLeadId === lead.id ? 'Cancel' : 'Assign'}
                         </button>
                       </td>
                     </tr>
-                  ))}
+                    {selectedLeadId === lead.id && (
+                      <tr key={`assign-${lead.id}`}>
+                        <td colSpan={7} className="px-4 py-3">
+                          <div className="p-4 rounded-lg border border-[#4b49ac]/30 bg-[#f8faff]">
+                            <p className="text-sm font-semibold text-[#4b49ac] mb-3">
+                              Assign Lead: {lead.id}
+                            </p>
+                            <div className="flex flex-col sm:flex-row gap-3 items-center">
+                              <select
+                                value={assignToMemberId}
+                                onChange={(e) => setAssignToMemberId(e.target.value)}
+                                className="px-3 py-2 border border-border rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
+                              >
+                                {teamMembers.length === 0 && <option value="">No members available</option>}
+                                {teamMembers.map((m) => (
+                                  <option key={m.id} value={m.id}>{m.name}</option>
+                                ))}
+                              </select>
+                              <select
+                                value={assignPriority}
+                                onChange={(e) => setAssignPriority(e.target.value)}
+                                className="px-3 py-2 border border-border rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
+                              >
+                                <option value="Normal">Priority: Normal</option>
+                                <option value="High">Priority: High</option>
+                                <option value="Urgent">Priority: Urgent</option>
+                              </select>
+                              <button
+                                onClick={handleConfirmAssignment}
+                                disabled={isAssigning || !assignToMemberId}
+                                className="px-4 py-2 text-sm bg-[#4b49ac] text-white rounded-lg hover:bg-[#4b49ac]/90 disabled:opacity-60 disabled:cursor-not-allowed"
+                              >
+                                {isAssigning ? "Assigning…" : "Confirm Assignment"}
+                              </button>
+                              <button
+                                onClick={() => setSelectedLeadId(null)}
+                                className="p-2 text-muted-foreground hover:text-foreground"
+                                title="Cancel"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                ))}
               </tbody>
             </table>
           </div>
-
-          {selectedLeadId && (
-            <div className="mt-4 p-4 rounded-lg border border-[#4b49ac]/20 bg-[#f8faff]">
-              <p className="text-sm font-semibold text-[#4b49ac] mb-3">
-                Assign Lead: {selectedLeadId}
-              </p>
-
-              <div className="flex flex-col sm:flex-row gap-3">
-                <select className="px-3 py-2 border border-border rounded-lg bg-white text-sm">
-                  {TEAM_MEMBERS.map((m) => (
-                    <option key={m.id}>{m.name}</option>
-                  ))}
-                </select>
-
-                <select className="px-3 py-2 border border-border rounded-lg bg-white text-sm">
-                  <option>Priority: Normal</option>
-                  <option>Priority: High</option>
-                  <option>Priority: Urgent</option>
-                </select>
-
-                <button
-                  onClick={() => setSelectedLeadId(null)}
-                  className="px-4 py-2 text-sm bg-[#4b49ac] text-white rounded-lg"
-                >
-                  Confirm Assignment
-                </button>
-              </div>
-            </div>
-          )}
         </div>
 
+        {/* Filtered Leads */}
         <div className="bg-white rounded-lg border border-border shadow-sm p-6">
           <h3 className="font-semibold mb-1">Filtered Leads</h3>
-          <p className="text-xs text-muted-foreground mb-4">
-            Result based on selected filters.
-          </p>
+          <p className="text-xs text-muted-foreground mb-4">Result based on selected filters.</p>
 
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -912,31 +858,30 @@ export function SalesTeamLeader() {
                 {filteredLeads.map((lead) => (
                   <tr key={lead.id} className="border-t border-border">
                     <td className="px-3 py-3">
-                      <p className="font-medium">{lead.client}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {lead.id} · {lead.dest}
+                      <p className="font-medium flex items-center gap-1 flex-wrap">
+                        {lead.client}
+                        {lead.aiGenerated && (
+                          <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-semibold">AI Extracted</span>
+                        )}
                       </p>
+                      <p className="text-xs text-muted-foreground">{lead.id} · {lead.dest}</p>
                     </td>
-                    <td className="px-3 py-3">{lead.assigned}</td>
+                    <td className="px-3 py-3">{lead.assigned || lead.assignedTo || "—"}</td>
                     <td className="px-3 py-3">
-                      <span
-                        className={`text-xs px-2 py-1 rounded-full ${getStatusColor(
-                          lead.status
-                        )}`}
-                      >
+                      <span className={`text-xs px-2 py-1 rounded-full ${getStatusColor(lead.status)}`}>
                         {lead.status}
                       </span>
                     </td>
                     <td className="px-3 py-3">
                       <div className="w-24 bg-gray-200 rounded-full h-2">
-                        <div
-                          className="h-2 rounded-full bg-[#4b49ac]"
-                          style={{ width: `${lead.progress}%` }}
-                        />
+                        <div className="h-2 rounded-full bg-[#4b49ac]" style={{ width: `${lead.progress}%` }} />
                       </div>
                     </td>
                     <td className="px-3 py-3">
-                      <button className="text-[#4b49ac]">
+                      <button
+                        onClick={() => setViewLead(lead)}
+                        className="p-1.5 rounded hover:bg-[#4b49ac]/10 text-[#4b49ac]"
+                      >
                         <Eye className="w-4 h-4" />
                       </button>
                     </td>
@@ -944,16 +889,74 @@ export function SalesTeamLeader() {
                 ))}
               </tbody>
             </table>
-
             {filteredLeads.length === 0 && (
-              <p className="text-sm text-muted-foreground py-4">
-                No leads found.
-              </p>
+              <p className="text-sm text-muted-foreground py-4">No leads found.</p>
             )}
           </div>
         </div>
       </div>
 
+      {/* ── Lead Detail Drawer ── */}
+      {viewLead && (
+        <div className="fixed inset-0 bg-black/50 flex justify-end z-50">
+          <div className="bg-white w-full max-w-lg h-full overflow-auto p-6">
+            <div className="flex justify-between mb-6">
+              <div>
+                <p className="text-xs text-muted-foreground">Lead ID: {viewLead.id}</p>
+                <h3 className="text-xl font-semibold text-foreground">{viewLead.client}</h3>
+                <p className="text-sm text-muted-foreground">{viewLead.dest}</p>
+              </div>
+              <button
+                onClick={() => setViewLead(null)}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-sm">
+              {[
+                ["Phone",       viewLead.phone      || "N/A"],
+                ["Email",       viewLead.email      || "N/A"],
+                ["Destination", viewLead.dest       || "N/A"],
+                ["Travel Date", viewLead.travelDate || "N/A"],
+                ["Duration",    `${viewLead.days} Days / ${viewLead.nights} Nights`],
+                ["Travellers",  `${viewLead.travellers} Pax`],
+                ["Budget",      viewLead.budget     || "N/A"],
+                ["Source",      viewLead.source     || "N/A"],
+                ["Priority",    viewLead.priority   || "N/A"],
+                ["Assigned To", viewLead.assigned   || viewLead.assignedTo || "Unassigned"],
+                ["SLA",         viewLead.sla        || "N/A"],
+                ["Status",      (viewLead.status || "").replace(/_/g, " ").toUpperCase()],
+                ["Follow-up",   viewLead.followUpDate || "Not set"],
+                ["Added On",    viewLead.date       || "N/A"],
+              ].map(([label, value]) => (
+                <div key={label} className="flex justify-between gap-4 border-b border-border pb-2">
+                  <p className="text-muted-foreground">{label}</p>
+                  <p className="font-medium text-right text-foreground">{value}</p>
+                </div>
+              ))}
+
+              <div>
+                <p className="text-muted-foreground mb-1">Progress</p>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div className="h-2 rounded-full bg-[#4b49ac]" style={{ width: `${viewLead.progress}%` }} />
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">{viewLead.progress}%</p>
+              </div>
+
+              {viewLead.remarks && (
+                <div>
+                  <p className="text-muted-foreground mb-1">Remarks</p>
+                  <p className="p-3 bg-[#f8fafc] rounded-lg text-foreground">{viewLead.remarks}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Import Modal (unchanged from original) ── */}
       {showUploadModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
@@ -970,17 +973,9 @@ export function SalesTeamLeader() {
             >
               <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
               <p className="text-sm font-medium">Click to upload Excel / CSV</p>
-              <p className="text-xs text-muted-foreground">
-                Supported: .xlsx, .xls, .csv
-              </p>
-
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".xlsx,.xls,.csv"
-                onChange={handleFileUpload}
-                className="hidden"
-              />
+              <p className="text-xs text-muted-foreground">Supported: .xlsx, .xls, .csv</p>
+              <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv"
+                onChange={handleFileUpload} className="hidden" />
             </div>
 
             {uploadedFileName && (

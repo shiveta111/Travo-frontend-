@@ -7,7 +7,7 @@ import {
 import { getActiveCountries, getActiveStatesByCountry, getActiveCitiesByState } from '../../api/location.api';
 import { getActiveDepartments } from '../../api/department.api';
 import { getRoles } from '../../api/roles.api';
-import { getUsers, createUser, updateUser, uploadProfilePicture, checkUsernameAvailability, generateUsername } from '../../api/user.api';
+import { getUsers, getUserById, createUser, updateUser, updateUserStatus, uploadProfilePicture, checkUsernameAvailability, generateUsername, getSalesTeamLeaders, getTeamMembersByLeader } from '../../api/user.api';
 
 type UserStatus = 'ACTIVE' | 'IDLE' | 'INACTIVE';
 
@@ -42,8 +42,6 @@ export function AddUser() {
   const [users, setUsers] = useState<User[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const [filterRole, setFilterRole] = useState<number>(0);
-  const [hoveredRoleId, setHoveredRoleId] = useState<number | null>(null);
-  const [roleUsersCache, setRoleUsersCache] = useState<Record<number, User[]>>({});
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   const [profilePreview, setProfilePreview] = useState<string | null>(null);
@@ -65,6 +63,13 @@ export function AddUser() {
   const [allCities, setAllCities] = useState<any[]>([]);
   const [activeDepartments, setActiveDepartments] = useState<any[]>([]);
   const [activeRoles, setActiveRoles] = useState<any[]>([]);
+  const [teamLeaders, setTeamLeaders] = useState<any[]>([]);
+
+  // ── Team-member assignment (shown when selected role is a Team Leader) ──────
+  const [selectedTeamMemberIds, setSelectedTeamMemberIds] = useState<number[]>([]);
+  const [potentialTeamMembers, setPotentialTeamMembers] = useState<User[]>([]);
+  const [teamMembersLoading, setTeamMembersLoading] = useState(false);
+  const [teamMemberSearch, setTeamMemberSearch] = useState('');
 
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -96,7 +101,8 @@ export function AddUser() {
     fetchCountries();
     fetchDepartments();
     fetchRoles();
-    fetchUsers(0);
+    fetchUsers();
+    fetchTeamLeaders();
   }, []);
 
   const normalizeUsers = (res: any): User[] => {
@@ -122,13 +128,12 @@ export function AddUser() {
     });
   };
 
-  const fetchUsers = async (roleId: number) => {
+  const fetchUsers = async () => {
     setUsersLoading(true);
     try {
-      const res = await getUsers(roleId);
+      const res = await getUsers(0);
       const normalized = normalizeUsers(res);
       setUsers(normalized);
-      setRoleUsersCache(prev => ({ ...prev, [roleId]: normalized }));
     } catch {
       setUsers([]);
     } finally {
@@ -146,17 +151,16 @@ export function AddUser() {
     }
   };
 
-  useEffect(() => {
-    if (activeRoles.length === 0) return;
-    activeRoles.forEach(async (role: any) => {
-      if (roleUsersCache[role.id] !== undefined) return;
-      try {
-        const res = await getUsers(role.id);
-        const normalized = normalizeUsers(res);
-        setRoleUsersCache(prev => ({ ...prev, [role.id]: normalized }));
-      } catch { /* silent — hover preview just won't show */ }
-    });
-  }, [activeRoles]);
+
+  const fetchTeamLeaders = async () => {
+    try {
+      const res = await getSalesTeamLeaders();
+      const rawList: any[] = Array.isArray(res) ? res : Array.isArray(res?.data) ? res.data : Array.isArray(res?.users) ? res.users : [];
+      setTeamLeaders(rawList);
+    } catch {
+      setTeamLeaders([]);
+    }
+  };
 
   const fetchDepartments = async () => {
     try {
@@ -318,11 +322,71 @@ export function AddUser() {
     department: '',
     role: '',
     status: 'active',
+    assigned_tl: 0,
+    team_leader_id: '',
   };
   const [newUserForm, setNewUserForm] = useState<any>(defaultNewUserForm);
 
+  // True whenever the currently-selected role name looks like a "team leader" role.
+  // Covers: "Sales Team Leader", "Team Leader", "Team Lead", "Sales Lead", etc.
+  const isTeamLeaderRole = useMemo(() => {
+    if (!newUserForm.role) return false;
+    const selectedRole = activeRoles.find(
+      (r: any) => String(r.id) === String(newUserForm.role)
+    );
+    const name = (selectedRole?.role_name ?? '').toLowerCase();
+    return (
+      name.includes('team leader') ||
+      name.includes('team lead') ||
+      name.includes('sales leader') ||
+      name.includes('teamlead')
+    );
+  }, [newUserForm.role, activeRoles]);
+
+  // Fetch all non-team-leader users as potential team members whenever the
+  // selected role becomes a team-leader role.
+  useEffect(() => {
+    if (!isTeamLeaderRole) {
+      setPotentialTeamMembers([]);
+      setSelectedTeamMemberIds([]);
+      setTeamMemberSearch('');
+      return;
+    }
+    let cancelled = false;
+    const fetchMembers = async () => {
+      setTeamMembersLoading(true);
+      try {
+        const res = await getUsers(0);
+        if (cancelled) return;
+        const normalized = normalizeUsers(res);
+        // Exclude other team leaders and admins so only assignable members appear
+        const members = normalized.filter((u) => {
+          const roleName = (u.role || '').toLowerCase();
+          return !roleName.includes('team leader') && !roleName.includes('admin');
+        });
+        setPotentialTeamMembers(members);
+      } catch {
+        if (!cancelled) setPotentialTeamMembers([]);
+      } finally {
+        if (!cancelled) setTeamMembersLoading(false);
+      }
+    };
+    fetchMembers();
+    return () => { cancelled = true; };
+  }, [isTeamLeaderRole]);
+
   const handleNewUserChange = (field: string, value: string) => {
-    setNewUserForm((prev: any) => ({ ...prev, [field]: value }));
+    setNewUserForm((prev: any) => {
+      const updated = { ...prev, [field]: value };
+      // When department changes, reset role so stale selection is cleared
+      if (field === 'department') updated.role = '';
+      return updated;
+    });
+    // Reset team-member assignment whenever role or department changes
+    if (field === 'role' || field === 'department') {
+      setSelectedTeamMemberIds([]);
+      setTeamMemberSearch('');
+    }
     if (field === 'username') {
       if (value.trim().length >= 3) {
         debouncedCheckUsername(value.trim());
@@ -377,6 +441,8 @@ export function AddUser() {
     setAllStates([]);
     setAllCities([]);
     setFormError('');
+    setSelectedTeamMemberIds([]);
+    setTeamMemberSearch('');
   };
 
   const handleCreateUser = async () => {
@@ -398,37 +464,45 @@ export function AddUser() {
         }
       }
 
-      const payload = {
-        username: newUserForm.username.trim(),
-        first_name: newUserForm.first_name.trim(),
-        last_name: newUserForm.last_name.trim(),
-        email: newUserForm.email.trim(),
-        secondary_email: newUserForm.secondary_email.trim(),
-        phone: newUserForm.phone.trim(),
-        password: passwords.password,
+      const payload: Record<string, any> = {
+        first_name:       newUserForm.first_name.trim(),
+        last_name:        newUserForm.last_name.trim(),
+        email:            newUserForm.email.trim(),
+        password:         passwords.password,
         confirm_password: passwords.confirm_password,
-        profile_picture: uploadedPicture,
-        join_date: formatDate(newUserForm.join_date),
-        country: Number(userForm.country_id) || 0,
-        state: Number(userForm.state_id) || 0,
-        city: Number(userForm.city_id) || 0,
-        department: Number(newUserForm.department),
-        role_id: Number(newUserForm.role),
-        status: newUserForm.status,
+        department:       Number(newUserForm.department),
+        role_id:          Number(newUserForm.role),
+        status:           newUserForm.status,
+        username:         newUserForm.username.trim()        || null,
+        secondary_email:  newUserForm.secondary_email.trim() || null,
+        phone:            newUserForm.phone.trim()           || null,
+        join_date:        formatDate(newUserForm.join_date)  || null,
+        profile_picture:  uploadedPicture                   || null,
+        country:          Number(userForm.country_id)       || null,
+        state:            Number(userForm.state_id)         || null,
+        city:             Number(userForm.city_id)          || null,
+        assigned_tl:      newUserForm.team_leader_id ? 1 : 0,
+        team_leader_id:   newUserForm.team_leader_id ? Number(newUserForm.team_leader_id) : null,
       };
+
       const res = await createUser(payload);
       if (res?.success) {
         resetForm();
         setShowAddUserModal(false);
-        fetchUsers(filterRole);
+        fetchUsers();
         showToast('User created successfully!', 'success');
       } else {
         setFormError(res?.message || res?.error || 'Failed to create user. Please try again.');
       }
     } catch (err: any) {
+      const d = err?.response?.data;
+      const detail = d?.errors
+        ? (Array.isArray(d.errors)
+            ? d.errors.map((e: any) => e.message || JSON.stringify(e)).join(', ')
+            : JSON.stringify(d.errors))
+        : '';
       setFormError(
-        err?.response?.data?.message ||
-        err?.response?.data?.error ||
+        d?.message || d?.error || detail ||
         'Something went wrong. Please try again.'
       );
     } finally {
@@ -462,38 +536,55 @@ export function AddUser() {
         }
       }
 
-      const payload = {
-        username: newUserForm.username.trim(),
-        first_name: newUserForm.first_name.trim(),
-        last_name: newUserForm.last_name.trim(),
-        email: newUserForm.email.trim(),
-        secondary_email: newUserForm.secondary_email.trim(),
-        phone: newUserForm.phone.trim(),
-        password: passwords.password,
-        confirm_password: passwords.confirm_password,
-        profile_picture: uploadedPicture,
-        join_date: formatDate(newUserForm.join_date),
-        country: Number(userForm.country_id) || 0,
-        state: Number(userForm.state_id) || 0,
-        city: Number(userForm.city_id) || 0,
-        department: Number(newUserForm.department),
-        role_id: Number(newUserForm.role),
-        status: newUserForm.status,
+      const payload: Record<string, any> = {
+        first_name:       newUserForm.first_name.trim(),
+        last_name:        newUserForm.last_name.trim(),
+        email:            newUserForm.email.trim(),
+        department:       Number(newUserForm.department),
+        role_id:          Number(newUserForm.role),
+        status:           newUserForm.status,
+        username:         newUserForm.username.trim()        || null,
+        secondary_email:  newUserForm.secondary_email.trim() || null,
+        phone:            newUserForm.phone.trim()           || null,
+        join_date:        formatDate(newUserForm.join_date)  || null,
+        profile_picture:  uploadedPicture                   || null,
+        country:          Number(userForm.country_id)       || null,
+        state:            Number(userForm.state_id)         || null,
+        city:             Number(userForm.city_id)          || null,
+        assigned_tl:      newUserForm.team_leader_id ? 1 : 0,
+        team_leader_id:   newUserForm.team_leader_id ? Number(newUserForm.team_leader_id) : null,
+        ...(passwords.password ? {
+          password:         passwords.password,
+          confirm_password: passwords.confirm_password,
+        } : {}),
       };
 
       const res = await updateUser(selectedUser!.id, payload);
       if (res?.success) {
+        // Save team member assignments if this is a TL role
+        if (isTeamLeaderRole && selectedTeamMemberIds.length > 0) {
+          await Promise.allSettled(
+            selectedTeamMemberIds.map((memberId) =>
+              updateUser(memberId, { team_leader_id: selectedUser!.id, assigned_tl: 1 })
+            )
+          );
+        }
         resetForm();
         setSelectedUser(null);
-        fetchUsers(filterRole);
+        fetchUsers();
         showToast('User updated successfully!', 'success');
       } else {
         setFormError(res?.message || res?.error || 'Failed to update user. Please try again.');
       }
     } catch (err: any) {
+      const d = err?.response?.data;
+      const detail = d?.errors
+        ? (Array.isArray(d.errors)
+            ? d.errors.map((e: any) => e.message || JSON.stringify(e)).join(', ')
+            : JSON.stringify(d.errors))
+        : '';
       setFormError(
-        err?.response?.data?.message ||
-        err?.response?.data?.error ||
+        d?.message || d?.error || detail ||
         'Something went wrong. Please try again.'
       );
     } finally {
@@ -507,38 +598,88 @@ export function AddUser() {
     city_id: '',
   });
 
-  const handleEditUser = (user: User) => {
+  const handleEditUser = async (user: User) => {
     setSelectedUser(user);
-    setProfilePreview((user as any).profile_picture || user.profilePicture || null);
     setProfileFile(null);
     setFormError('');
     setPasswords({ password: '', confirm_password: '' });
+    setTeamMemberSearch('');
+
+    // Fetch full user details so all fields are pre-filled correctly
+    let u: any = user;
+    try {
+      const res = await getUserById(user.id);
+      u = res?.data || res?.user || res || user;
+    } catch {
+      u = user;
+    }
+
+    setProfilePreview(u.profile_picture || u.profilePicture || null);
 
     setNewUserForm({
-      username: user.username || '',
-      first_name: user.first_name || '',
-      last_name: user.last_name || '',
-      email: user.email || '',
-      secondary_email: (user as any).secondary_email || user.secondary_email || '',
-      phone: user.phone || '',
-      join_date: (user as any).join_date || user.joinDate || '',
-      department: String((user as any).department_id || ''),
-      role: String((user as any).role_id || ''),
-      status: user.status?.toLowerCase() || 'active',
+      username:        u.username       || u.user_name       || '',
+      first_name:      u.first_name     || '',
+      last_name:       u.last_name      || '',
+      email:           u.email          || '',
+      secondary_email: u.secondary_email || '',
+      phone:           u.phone          || '',
+      join_date:       u.join_date      || u.joinDate        || '',
+      department:      String(u.department_id || ''),
+      role:            String(u.role_id       || ''),
+      status:          (u.status || 'active').toLowerCase(),
+      team_leader_id:  String(u.team_leader_id || ''),
+      assigned_tl:     u.assigned_tl ?? 0,
     });
 
-    const countryId = Number((user as any).country_id || (user as any).country || 0);
-    const stateId = Number((user as any).state_id || (user as any).state || 0);
-    const cityId = Number((user as any).city_id || (user as any).city || 0);
+    const countryId = Number(u.country_id || u.country || 0);
+    const stateId   = Number(u.state_id   || u.state   || 0);
+    const cityId    = Number(u.city_id    || u.city    || 0);
 
     setUserForm({
       country_id: countryId ? String(countryId) : '',
-      state_id: stateId ? String(stateId) : '',
-      city_id: cityId ? String(cityId) : '',
+      state_id:   stateId   ? String(stateId)   : '',
+      city_id:    cityId    ? String(cityId)    : '',
     });
 
     if (countryId) fetchStates(countryId, false);
-    if (stateId) fetchCities(stateId);
+    if (stateId)   fetchCities(stateId);
+
+    // Pre-populate team member checkboxes if this user is a TL
+    const inlineIds: number[] = (u.team_member_ids || []).map(Number);
+    if (inlineIds.length > 0) {
+      setSelectedTeamMemberIds(inlineIds);
+    } else {
+      const roleId = String(u.role_id || '');
+      const matchedRole = activeRoles.find((r: any) => String(r.id) === roleId);
+      const roleName = (matchedRole?.role_name ?? '').toLowerCase();
+      const isTL = roleName.includes('team leader') || roleName.includes('team lead') || roleName.includes('sales leader') || roleName.includes('teamlead');
+      if (isTL) {
+        try {
+          const res = await getTeamMembersByLeader(user.id);
+          const rawList: any[] = Array.isArray(res) ? res : Array.isArray(res?.data) ? res.data : Array.isArray(res?.users) ? res.users : [];
+          setSelectedTeamMemberIds(rawList.map((m: any) => Number(m.id ?? m.user_id ?? 0)).filter(Boolean));
+        } catch {
+          setSelectedTeamMemberIds([]);
+        }
+      } else {
+        setSelectedTeamMemberIds([]);
+      }
+    }
+  };
+
+  const STATUS_CYCLE: UserStatus[] = ['ACTIVE', 'IDLE', 'INACTIVE'];
+
+  const handleToggleStatus = async (user: User) => {
+    const nextStatus = STATUS_CYCLE[(STATUS_CYCLE.indexOf(user.status) + 1) % STATUS_CYCLE.length];
+    // Optimistic update
+    setUsers((prev) => prev.map((u) => u.id === user.id ? { ...u, status: nextStatus } : u));
+    try {
+      await updateUserStatus(user.id, nextStatus.toLowerCase());
+    } catch {
+      // Revert on failure
+      setUsers((prev) => prev.map((u) => u.id === user.id ? { ...u, status: user.status } : u));
+      showToast('Failed to update user status.', 'error');
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -608,24 +749,18 @@ export function AddUser() {
   };
 
   const filteredUsers = useMemo(() => {
-    const base = hoveredRoleId !== null
-      ? (roleUsersCache[hoveredRoleId] ?? users)
-      : users;
-    return base
+    return users
       .map(enrichUser)
-      .filter(user => {
+      .filter((user: User) => {
+        const matchesRole = filterRole === 0 || String((user as any).role_id) === String(filterRole);
         const matchesSearch =
           user.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
           user.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
           user.department?.toLowerCase().includes(searchQuery.toLowerCase());
         const matchesStatus = filterStatus === 'all' || user.status === filterStatus;
-        return matchesSearch && matchesStatus;
+        return matchesRole && matchesSearch && matchesStatus;
       });
-  }, [users, hoveredRoleId, roleUsersCache, activeDepartments, activeRoles, searchQuery, filterStatus]);
-
-  const previewLabel = hoveredRoleId !== null
-    ? (hoveredRoleId === 0 ? 'All Roles' : activeRoles.find((r: any) => r.id === hoveredRoleId)?.role_name)
-    : null;
+  }, [users, filterRole, activeDepartments, activeRoles, searchQuery, filterStatus]);
 
   const stats = {
     totalUsers: users.length,
@@ -665,26 +800,21 @@ export function AddUser() {
               {showFilterDropdown && (
                 <div
                   className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-border z-10"
-                  onMouseLeave={() => setHoveredRoleId(null)}
                 >
                   <div className="p-2">
                     <p className="text-xs text-muted-foreground px-2 py-1">Filter by Role</p>
                     <button
                       key="all"
-                      onMouseEnter={() => setHoveredRoleId(0)}
-                      onClick={() => { setFilterRole(0); fetchUsers(0); setHoveredRoleId(null); setShowFilterDropdown(false); }}
-                      className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${filterRole === 0 ? 'bg-[#4b49ac]/10 text-[#4b49ac]' : 'text-foreground hover:bg-sidebar-accent'
-                        }`}
+                      onClick={() => { setFilterRole(0); setShowFilterDropdown(false); }}
+                      className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${filterRole === 0 ? 'bg-[#4b49ac]/10 text-[#4b49ac]' : 'text-foreground hover:bg-sidebar-accent'}`}
                     >
                       All Roles
                     </button>
                     {activeRoles.map((role) => (
                       <button
                         key={role.id}
-                        onMouseEnter={() => setHoveredRoleId(role.id)}
-                        onClick={() => { setFilterRole(role.id); fetchUsers(role.id); setHoveredRoleId(null); setShowFilterDropdown(false); }}
-                        className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${filterRole === role.id ? 'bg-[#4b49ac]/10 text-[#4b49ac]' : 'text-foreground hover:bg-sidebar-accent'
-                          }`}
+                        onClick={() => { setFilterRole(role.id); setShowFilterDropdown(false); }}
+                        className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${filterRole === role.id ? 'bg-[#4b49ac]/10 text-[#4b49ac]' : 'text-foreground hover:bg-sidebar-accent'}`}
                       >
                         {role.role_name}
                       </button>
@@ -782,11 +912,6 @@ export function AddUser() {
       <div className="bg-white rounded-lg border border-border shadow-sm overflow-hidden mb-6">
         <div className="p-4 border-b border-border flex items-center justify-between">
           <h3 className="text-foreground">Users</h3>
-          {previewLabel && (
-            <span className="text-xs px-2.5 py-1 rounded-full bg-[#4b49ac]/10 text-[#4b49ac] font-medium animate-pulse">
-              Previewing: {previewLabel}
-            </span>
-          )}
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -851,10 +976,14 @@ export function AddUser() {
                     <span className="text-sm text-muted-foreground">{user.department}</span>
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`flex items-center gap-1 w-fit px-2 py-1 rounded text-xs ${getStatusColor(user.status)}`}>
+                    <button
+                      onClick={() => handleToggleStatus(user)}
+                      title="Click to cycle status"
+                      className={`flex items-center gap-1 w-fit px-2 py-1 rounded text-xs cursor-pointer hover:opacity-80 transition-opacity ${getStatusColor(user.status)}`}
+                    >
                       {getStatusIcon(user.status)}
                       {user.status}
-                    </span>
+                    </button>
                   </td>
                   <td className="px-4 py-3 text-sm text-muted-foreground">{user.lastActive}</td>
                   <td className="px-4 py-3">
@@ -1249,17 +1378,191 @@ export function AddUser() {
                         <select
                           value={newUserForm.role}
                           onChange={(e) => handleNewUserChange('role', e.target.value)}
-                          className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
+                          disabled={!newUserForm.department}
+                          className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4b49ac] disabled:bg-gray-100 disabled:cursor-not-allowed"
                         >
-                          <option value="">Select Role</option>
-                          {activeRoles.map((role) => (
-                            <option key={role.id} value={role.id}>
-                              {role.role_name}
-                            </option>
-                          ))}
+                          <option value="">
+                            {newUserForm.department ? 'Select Role' : 'Select Department first'}
+                          </option>
+                          {activeRoles
+                            .filter((role) =>
+                              // Show roles that belong to the selected department
+                              // OR roles that have no department assigned (global roles)
+                              String(role.department_id) === String(newUserForm.department) ||
+                              !role.department_id ||
+                              role.department_id === 0
+                            )
+                            .map((role) => (
+                              <option key={role.id} value={role.id}>
+                                {role.role_name}
+                              </option>
+                            ))}
                         </select>
                       </div>
                     </div>
+
+                    {/* ── Team Leader Assignment ── */}
+                    <div>
+                      <label className="block text-sm font-medium text-foreground mb-2">
+                        Assign to Team Leader
+                      </label>
+                      <select
+                        value={newUserForm.team_leader_id}
+                        onChange={(e) => handleNewUserChange('team_leader_id', e.target.value)}
+                        className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
+                      >
+                        <option value="">None</option>
+                        {teamLeaders.map((tl: any) => (
+                          <option key={tl.id} value={tl.id}>
+                            {tl.full_name ?? `${tl.first_name ?? ''} ${tl.last_name ?? ''}`.trim() ?? tl.username}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* ── Team Member Assignment (only for Team Leader roles) ── */}
+                    {isTeamLeaderRole && (
+                      <div>
+                        {/* Label row — same style as Department / Role labels */}
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="block text-sm font-medium text-foreground">
+                            Assign Team Members
+                            {selectedTeamMemberIds.length > 0 && (
+                              <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-[#4b49ac] text-white font-medium">
+                                {selectedTeamMemberIds.length} selected
+                              </span>
+                            )}
+                          </label>
+                          {selectedTeamMemberIds.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setSelectedTeamMemberIds([])}
+                              className="text-xs text-red-500 hover:text-red-700 transition-colors"
+                            >
+                              Clear all
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Container styled exactly like a select — border, rounded */}
+                        <div className="w-full border border-border rounded-lg overflow-hidden bg-white">
+
+                          {/* Search bar at top */}
+                          <div className="relative border-b border-border">
+                            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                            <input
+                              type="text"
+                              placeholder="Search by name, email or role…"
+                              value={teamMemberSearch}
+                              onChange={(e) => setTeamMemberSearch(e.target.value)}
+                              className="w-full pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4b49ac] bg-white"
+                            />
+                          </div>
+
+                          {/* Loading */}
+                          {teamMembersLoading && (
+                            <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
+                              <Clock className="w-4 h-4 animate-spin" />
+                              Loading members…
+                            </div>
+                          )}
+
+                          {/* Empty */}
+                          {!teamMembersLoading && potentialTeamMembers.length === 0 && (
+                            <p className="text-sm text-muted-foreground text-center py-5">
+                              No assignable members found.
+                            </p>
+                          )}
+
+                          {/* Member list */}
+                          {!teamMembersLoading && potentialTeamMembers.length > 0 && (() => {
+                            const q = teamMemberSearch.toLowerCase();
+                            const visible = potentialTeamMembers.filter((m) =>
+                              !q ||
+                              m.name.toLowerCase().includes(q) ||
+                              (m.email || '').toLowerCase().includes(q) ||
+                              (m.role || '').toLowerCase().includes(q)
+                            );
+                            const allSelected = visible.length > 0 && visible.every((m) => selectedTeamMemberIds.includes(m.id));
+                            return (
+                              <div className="max-h-52 overflow-y-auto">
+                                {/* Select-all row */}
+                                <div className="flex items-center gap-3 px-3 py-2 border-b border-border bg-[#f8fafc]">
+                                  <input
+                                    type="checkbox"
+                                    id="tm-select-all"
+                                    checked={allSelected}
+                                    onChange={() => {
+                                      if (allSelected) {
+                                        setSelectedTeamMemberIds((prev) =>
+                                          prev.filter((id) => !visible.some((m) => m.id === id))
+                                        );
+                                      } else {
+                                        setSelectedTeamMemberIds((prev) => [
+                                          ...prev,
+                                          ...visible.filter((m) => !prev.includes(m.id)).map((m) => m.id),
+                                        ]);
+                                      }
+                                    }}
+                                    className="w-4 h-4 accent-[#4b49ac] cursor-pointer"
+                                  />
+                                  <label htmlFor="tm-select-all" className="text-xs font-medium text-muted-foreground cursor-pointer select-none">
+                                    {allSelected ? 'Deselect all' : 'Select all'} ({visible.length})
+                                  </label>
+                                </div>
+
+                                {/* Individual member rows */}
+                                {visible.length === 0 ? (
+                                  <p className="text-sm text-muted-foreground text-center py-4">
+                                    No results for "{teamMemberSearch}"
+                                  </p>
+                                ) : (
+                                  visible.map((member) => {
+                                    const isChecked = selectedTeamMemberIds.includes(member.id);
+                                    return (
+                                      <label
+                                        key={member.id}
+                                        className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer select-none border-b border-border last:border-0 transition-colors ${
+                                          isChecked ? 'bg-[#4b49ac]/8' : 'hover:bg-sidebar-accent'
+                                        }`}
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          checked={isChecked}
+                                          onChange={() =>
+                                            setSelectedTeamMemberIds((prev) =>
+                                              isChecked
+                                                ? prev.filter((id) => id !== member.id)
+                                                : [...prev, member.id]
+                                            )
+                                          }
+                                          className="w-4 h-4 accent-[#4b49ac] cursor-pointer shrink-0"
+                                        />
+                                        {/* Avatar */}
+                                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#4b49ac] to-[#7978e9] flex items-center justify-center text-white text-xs font-semibold shrink-0">
+                                          {member.name.charAt(0).toUpperCase()}
+                                        </div>
+                                        {/* Name + email */}
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-sm font-medium text-foreground truncate">{member.name}</p>
+                                          <p className="text-xs text-muted-foreground truncate">{member.email}</p>
+                                        </div>
+                                        {/* Role badge */}
+                                        {member.role && (
+                                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0 ${getRoleBadgeColor(member.role)}`}>
+                                            {member.role}
+                                          </span>
+                                        )}
+                                      </label>
+                                    );
+                                  })
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    )}
 
                     {!selectedUser && (
                       <div className="grid grid-cols-2 gap-4">

@@ -3,7 +3,7 @@ import { ArrowLeft, Download, Search, Eye } from "lucide-react";
 import * as XLSX from "xlsx";
 
 type Member = {
-  id: string;
+  id: string | number;
   name: string;
   role: string;
 };
@@ -16,6 +16,7 @@ type Lead = {
   dest: string;
   status: string;
   assignedTo: string;
+  assignedToId?: number | null;
   assigned: string;
   sla: string;
   budget: string;
@@ -56,7 +57,12 @@ export function SalesTeamMemberHistory({ member, leads, onBack }: Props) {
   const [stageFilter, setStageFilter] = useState("all");
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
 
-  const memberLeads = leads.filter((lead) => lead.assignedTo === member.id);
+  // Match by numeric ID (assignedToId) first; fall back to string comparison (assignedTo)
+  const memberLeads = leads.filter((lead) =>
+    lead.assignedToId !== undefined && lead.assignedToId !== null
+      ? lead.assignedToId === Number(member.id)
+      : String(lead.assignedTo) === String(member.id)
+  );
 
   const filteredLeads = memberLeads.filter((lead) => {
     const search = searchQuery.toLowerCase();

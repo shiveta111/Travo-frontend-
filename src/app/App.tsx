@@ -27,6 +27,7 @@ const DepartmentManagement = lazy(() => import('./user_and_role_management/Depar
 const Countries = lazy(() => import('./setting/Countries').then(m => ({ default: m.Countries })));
 const States = lazy(() => import('./setting/States').then(m => ({ default: m.States })));
 const Cities = lazy(() => import('./setting/Cities').then(m => ({ default: m.Cities })));
+const Agency = lazy(() => import('./setting/Agency').then(m => ({ default: m.Agency })));
 const MenuManagement = lazy(() => import('./admin/MenuManagement').then(m => ({ default: m.MenuManagement })));
 
 const LeadManagement = lazy(() => import('./pages/LeadManagement').then(m => ({ default: m.LeadManagement })));
@@ -132,6 +133,9 @@ export default function App() {
 
         case 'departments':
           return <DepartmentManagement />;
+
+        case 'agency':
+          return <Agency />;
 
         case 'countries':
           return <Countries />;

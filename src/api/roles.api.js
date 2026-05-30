@@ -62,3 +62,12 @@ export const deleteRole = async (id) => {
 
   return response.data;
 };
+
+/**
+ * GET ROLES BY DEPARTMENT ID
+ * GET /roles/department/:deptId
+ */
+export const getRolesByDepartment = async (deptId) => {
+  const response = await api.get(`/roles/department/${deptId}`);
+  return response.data;
+};

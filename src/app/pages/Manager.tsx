@@ -1,4 +1,7 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { getAllLeads, mapApiLead, getRecentActivities } from "../../api/leads.api";
+import { getUsers } from "../../api/user.api";
+import { useAuth } from "../../auth/AuthContext";
 import {
   Search,
   Filter,
@@ -70,6 +73,7 @@ type ManagerLead = {
   reason: string;
   remarks: string;
   lossReason: string;
+  aiGenerated?: boolean;
 };
 
 type Activity = {
@@ -84,192 +88,7 @@ type Activity = {
 
 const today = new Date().toISOString().split("T")[0];
 
-const LEADS: ManagerLead[] = [
-  {
-    id: "L001",
-    client: "Arjun Sharma",
-    phone: "9876543210",
-    email: "arjun@test.com",
-    destination: "Shimla-Manali",
-    travelDate: "2026-06-10",
-    nights: 5,
-    pax: 4,
-    source: "WhatsApp",
-    stage: "quotation_sent",
-    status: "quotation_sent",
-    priority: "High",
-    teamLeader: "Sales Team Leader - North",
-    supportExecutive: "Priya K",
-    fieldExecutive: "Ravi Field Executive",
-    selectedPackage: "Shimla Manali Family Tour",
-    packageDuration: "6 Days / 5 Nights",
-    quotationAmount: 124500,
-    clientBudget: 120000,
-    quotationStatus: "sent",
-    sentVia: "Email + WhatsApp",
-    nextFollowUp: "2026-05-21",
-    attempts: 2,
-    lastActivity: "Package shared with client",
-    reason: "Client asked for hotel upgrade option.",
-    remarks: "Quotation sent. Waiting for client response.",
-    lossReason: "",
-  },
-  {
-    id: "L002",
-    client: "Meera Gupta",
-    phone: "9876543211",
-    email: "meera@test.com",
-    destination: "Kerala 7N",
-    travelDate: "2026-06-18",
-    nights: 4,
-    pax: 2,
-    source: "Website",
-    stage: "approval_pending",
-    status: "approval_pending",
-    priority: "Normal",
-    teamLeader: "Sales Team Leader - South",
-    supportExecutive: "Rahul M",
-    fieldExecutive: "Amit Field Executive",
-    selectedPackage: "Kerala Honeymoon Package",
-    packageDuration: "5 Days / 4 Nights",
-    quotationAmount: 98000,
-    clientBudget: 280000,
-    quotationStatus: "approval_pending",
-    sentVia: "Not Sent",
-    nextFollowUp: "2026-05-22",
-    attempts: 1,
-    lastActivity: "Quotation prepared",
-    reason: "Waiting for Team Leader approval.",
-    remarks: "Quotation prepared and sent for approval.",
-    lossReason: "",
-  },
-  {
-    id: "L003",
-    client: "Dev Patel",
-    phone: "9876543212",
-    email: "dev@test.com",
-    destination: "Goa Package",
-    travelDate: "2026-06-05",
-    nights: 3,
-    pax: 5,
-    source: "Campaign",
-    stage: "follow_up",
-    status: "not_reachable",
-    priority: "Urgent",
-    teamLeader: "Sales Team Leader - West",
-    supportExecutive: "Sneha Support",
-    fieldExecutive: "Karan Field Executive",
-    selectedPackage: "Goa Beach Holiday",
-    packageDuration: "4 Days / 3 Nights",
-    quotationAmount: 85000,
-    clientBudget: 85000,
-    quotationStatus: "not_prepared",
-    sentVia: "Not Sent",
-    nextFollowUp: today,
-    attempts: 3,
-    lastActivity: "Call attempt failed",
-    reason: "Client not reachable after 3 attempts.",
-    remarks: "Need urgent follow-up today evening.",
-    lossReason: "",
-  },
-  {
-    id: "L004",
-    client: "Sneha Rao",
-    phone: "9876543213",
-    email: "sneha@test.com",
-    destination: "Rajasthan Tour",
-    travelDate: "2026-07-01",
-    nights: 6,
-    pax: 3,
-    source: "Field Visit",
-    stage: "converted",
-    status: "converted",
-    priority: "High",
-    teamLeader: "Sales Team Leader - North",
-    supportExecutive: "Priya K",
-    fieldExecutive: "Ravi Field Executive",
-    selectedPackage: "Rajasthan Heritage Tour",
-    packageDuration: "7 Days / 6 Nights",
-    quotationAmount: 348000,
-    clientBudget: 350000,
-    quotationStatus: "sent",
-    sentVia: "WhatsApp",
-    nextFollowUp: "",
-    attempts: 4,
-    lastActivity: "Booking confirmed",
-    reason: "Client accepted quotation and paid advance.",
-    remarks: "Booking confirmed.",
-    lossReason: "",
-  },
-  {
-    id: "L005",
-    client: "Anil Kumar",
-    phone: "9876543214",
-    email: "anil@test.com",
-    destination: "Dubai",
-    travelDate: "2026-06-25",
-    nights: 4,
-    pax: 2,
-    source: "Reference",
-    stage: "lost",
-    status: "lost",
-    priority: "Normal",
-    teamLeader: "Sales Team Leader - West",
-    supportExecutive: "Sneha Support",
-    fieldExecutive: "Karan Field Executive",
-    selectedPackage: "Dubai Short Break",
-    packageDuration: "5 Days / 4 Nights",
-    quotationAmount: 145000,
-    clientBudget: 90000,
-    quotationStatus: "sent",
-    sentVia: "Email",
-    nextFollowUp: "",
-    attempts: 5,
-    lastActivity: "Lead marked lost",
-    reason: "Budget mismatch.",
-    remarks: "Client found package expensive.",
-    lossReason: "Budget mismatch",
-  },
-];
-
-const ACTIVITIES: Activity[] = [
-  {
-    id: "A001",
-    leadId: "L001",
-    title: "Package Shared",
-    mode: "WhatsApp",
-    note: "Shimla Manali Family Tour shared with client via Email and WhatsApp.",
-    date: "2026-05-20",
-    time: "10:15 AM",
-  },
-  {
-    id: "A002",
-    leadId: "L002",
-    title: "Quotation Prepared",
-    mode: "System",
-    note: "Kerala Honeymoon Package quotation sent for Team Leader approval.",
-    date: "2026-05-20",
-    time: "11:05 AM",
-  },
-  {
-    id: "A003",
-    leadId: "L003",
-    title: "Call Attempt",
-    mode: "Call",
-    note: "Client did not answer. Marked as not reachable.",
-    date: "2026-05-20",
-    time: "12:20 PM",
-  },
-  {
-    id: "A004",
-    leadId: "L004",
-    title: "Booking Confirmed",
-    mode: "System",
-    note: "Client confirmed booking and paid advance.",
-    date: "2026-05-19",
-    time: "05:30 PM",
-  },
-];
+// Activities are loaded from the API — no static fallback needed.
 
 const getLeadProgress = (lead: ManagerLead) => {
   if (lead.status === "converted") return 100;
@@ -344,9 +163,113 @@ const getPriorityColor = (priority: string) => {
   return map[priority] || "bg-gray-100 text-gray-700";
 };
 
+const mapApiLeadToManager = (rawLead: any): ManagerLead => {
+  const base = mapApiLead(rawLead);
+  const budgetNum = Number(String(rawLead.budget_max ?? '').replace(/[^0-9.]/g, '')) || 0;
+  return {
+    id: base.id,
+    client: base.client,
+    phone: base.phone,
+    email: base.email,
+    destination: base.dest,
+    travelDate: base.travelDate as string,
+    nights: Number(base.nights) || 0,
+    pax: Number(base.travellers) || 0,
+    source: base.source,
+    stage: (base.stage as LeadStage) || 'new',
+    status: (base.status as LeadStatus) || 'new',
+    priority: (base.priority as ManagerLead['priority']) || 'Normal',
+    teamLeader: base.assigned || base.assignedLeader || '—',
+    supportExecutive: rawLead.support_executive ?? '—',
+    fieldExecutive: rawLead.field_executive ?? '—',
+    selectedPackage: rawLead.package_name ?? '',
+    packageDuration: '',
+    quotationAmount: budgetNum,
+    clientBudget: budgetNum,
+    quotationStatus: (rawLead.quotation_status as ManagerLead['quotationStatus']) ?? 'not_prepared',
+    sentVia: (rawLead.sent_via as ManagerLead['sentVia']) ?? 'Not Sent',
+    nextFollowUp: base.nextFollowUp || '',
+    attempts: Number(rawLead.attempts ?? 0),
+    lastActivity: rawLead.last_activity ?? '',
+    reason: base.remarks,
+    remarks: base.remarks,
+    lossReason: rawLead.loss_reason ?? '',
+    aiGenerated: base.aiGenerated,
+  };
+};
+
 export function Manager() {
-  const [leads] = useState<ManagerLead[]>(LEADS);
-  const [activities] = useState<Activity[]>(ACTIVITIES);
+  const { user } = useAuth() as any;
+  const [leads, setLeads] = useState<ManagerLead[]>([]);
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [fetchError, setFetchError] = useState('');
+  const [userMap, setUserMap] = useState<Record<string, string>>({});
+
+  const fetchLeads = useCallback(async (resolvedUserMap: Record<string, string> = {}) => {
+    try {
+      setIsLoading(true);
+      setFetchError('');
+      const data = await getAllLeads();
+      const rawList: any[] = Array.isArray(data) ? data : Array.isArray(data?.leads) ? data.leads : Array.isArray(data?.data) ? data.data : [];
+      setLeads(rawList.map((item) => {
+        const mapped = mapApiLeadToManager(item);
+        // Resolve TL name from userMap if it's a numeric ID
+        const tlRaw = mapped.teamLeader;
+        if (tlRaw && /^\d+$/.test(tlRaw) && resolvedUserMap[tlRaw]) {
+          mapped.teamLeader = resolvedUserMap[tlRaw];
+        }
+        return mapped;
+      }));
+    } catch (err: any) {
+      const msg = err?.response?.data?.message;
+      setFetchError(msg || 'Failed to load leads. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const fetchActivities = useCallback(async () => {
+    const userId = user?.id ?? user?.user_id;
+    if (!userId) return;
+    try {
+      const data = await getRecentActivities(userId);
+      const rawList: any[] = Array.isArray(data) ? data : Array.isArray(data?.activities) ? data.activities : Array.isArray(data?.data) ? data.data : [];
+      const mapped: Activity[] = rawList.map((a: any) => ({
+        id:     String(a.id ?? a.activity_id ?? ''),
+        leadId: String(a.lead_id ?? ''),
+        title:  a.title ?? a.action ?? '',
+        mode:   a.mode ?? a.follow_up_mode ?? 'System',
+        note:   a.note ?? a.description ?? '',
+        date:   a.date ?? a.created_date ?? '',
+        time:   a.time ?? '',
+      }));
+      setActivities(mapped);
+    } catch {
+      // Non-fatal — activities panel simply stays empty
+    }
+  }, [user]);
+
+  useEffect(() => {
+    const init = async () => {
+      try {
+        const res = await getUsers(0);
+        const rawList: any[] = Array.isArray(res?.data) ? res.data : Array.isArray(res?.users) ? res.users : Array.isArray(res) ? res : [];
+        const map: Record<string, string> = {};
+        rawList.forEach((u: any) => {
+          const id = String(u.id ?? u.user_id ?? '');
+          const name = u.name || `${u.first_name ?? ''} ${u.last_name ?? ''}`.trim() || u.username || '';
+          if (id && name) map[id] = name;
+        });
+        setUserMap(map);
+        fetchLeads(map);
+      } catch {
+        fetchLeads({});
+      }
+    };
+    init();
+  }, [fetchLeads]);
+  useEffect(() => { fetchActivities(); }, [fetchActivities]);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [teamLeaderFilter, setTeamLeaderFilter] = useState("all");
@@ -571,6 +494,13 @@ export function Manager() {
             </select>
           </div>
         </div>
+
+        {fetchError && (
+          <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center justify-between">
+            <p className="text-sm text-amber-800">{fetchError}</p>
+            <button onClick={fetchLeads} className="text-xs px-3 py-1 bg-amber-600 text-white rounded-lg">Retry</button>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 xl:grid-cols-8 gap-4 mb-6">
@@ -677,8 +607,11 @@ export function Manager() {
                       className="hover:bg-sidebar-accent transition-colors"
                     >
                       <td className="px-4 py-3">
-                        <p className="text-sm font-medium text-foreground">
+                        <p className="text-sm font-medium text-foreground flex items-center gap-1 flex-wrap">
                           {lead.id} · {lead.client}
+                          {lead.aiGenerated && (
+                            <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-semibold">AI Extracted</span>
+                          )}
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {lead.destination} · {lead.nights}N · {lead.pax} Pax
@@ -879,8 +812,11 @@ function PipelineColumn({
             >
               <div className="flex items-start justify-between gap-2 mb-2">
                 <div>
-                  <p className="text-sm font-medium text-foreground">
+                  <p className="text-sm font-medium text-foreground flex items-center gap-1 flex-wrap">
                     {lead.client}
+                    {lead.aiGenerated && (
+                      <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-semibold">AI Extracted</span>
+                    )}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {lead.destination}
@@ -1047,8 +983,11 @@ function LeadDetailDrawer({
         <div className="flex justify-between mb-6">
           <div>
             <p className="text-xs text-muted-foreground">{lead.id}</p>
-            <h3 className="text-xl font-semibold text-foreground">
+            <h3 className="text-xl font-semibold text-foreground flex items-center gap-2 flex-wrap">
               {lead.client}
+              {lead.aiGenerated && (
+                <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-semibold">AI Extracted</span>
+              )}
             </h3>
             <p className="text-sm text-muted-foreground">
               {lead.destination} · {lead.packageDuration}

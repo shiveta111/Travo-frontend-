@@ -1,4 +1,7 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { getAllLeads, mapApiLead, updateLead, updateLeadFollowUp, getFollowUpModes, getRecentActivities } from "../../api/leads.api";
+import { getAllPackages, mapApiPackage } from "../../api/packages.api";
+import { useAuth } from "../../auth/AuthContext";
 import {
   Search,
   Phone,
@@ -71,6 +74,7 @@ type Lead = {
   sentVia: "Not Sent" | "Email" | "WhatsApp" | "Email + WhatsApp";
   lossReason: string;
   remarks: string;
+  aiGenerated?: boolean;
 };
 
 type Activity = {
@@ -95,143 +99,7 @@ type ReadyPackage = {
 
 const today = new Date().toISOString().split("T")[0];
 
-const READY_PACKAGES: ReadyPackage[] = [
-  {
-    id: "PKG001",
-    title: "Shimla Manali Family Tour",
-    destination: "Shimla - Manali",
-    duration: "6 Days / 5 Nights",
-    price: "₹1,24,500",
-  },
-  {
-    id: "PKG002",
-    title: "Kerala Honeymoon Package",
-    destination: "Munnar - Alleppey - Kochi",
-    duration: "5 Days / 4 Nights",
-    price: "₹98,000",
-  },
-  {
-    id: "PKG003",
-    title: "Goa Beach Holiday",
-    destination: "Goa",
-    duration: "4 Days / 3 Nights",
-    price: "₹85,000",
-  },
-  {
-    id: "PKG004",
-    title: "Rajasthan Heritage Tour",
-    destination: "Jaipur - Jodhpur - Udaipur",
-    duration: "7 Days / 6 Nights",
-    price: "₹3,48,000",
-  },
-];
-
-const INITIAL_LEADS: Lead[] = [
-  {
-    id: "L001",
-    client: "Arjun Sharma",
-    phone: "9876543210",
-    email: "arjun@test.com",
-    destination: "Shimla-Manali",
-    travelDate: "2026-06-10",
-    travellers: 4,
-    budget: "₹1.2L",
-    source: "WhatsApp",
-    priority: "High",
-    assignedBy: "Sales Team Leader - North",
-    stage: "quotation_sent",
-    status: "quotation_sent",
-    lastContact: "2026-05-20",
-    nextFollowUp: "2026-05-21",
-    followUpMode: "Call",
-    attempts: 2,
-    quotationAmount: "₹1,24,500",
-    selectedPackage: "Shimla Manali Family Tour",
-    quotationStatus: "sent",
-    approvalBy: "Sales Team Leader - North",
-    sentVia: "Email + WhatsApp",
-    lossReason: "",
-    remarks: "Quotation sent. Client asked for hotel upgrade option.",
-  },
-  {
-    id: "L002",
-    client: "Meera Gupta",
-    phone: "9876543211",
-    email: "meera@test.com",
-    destination: "Kerala 7N",
-    travelDate: "2026-06-18",
-    travellers: 2,
-    budget: "₹2.8L",
-    source: "Website",
-    priority: "Normal",
-    assignedBy: "Sales Team Leader - South",
-    stage: "quotation_approval",
-    status: "approval_pending",
-    lastContact: "2026-05-20",
-    nextFollowUp: "2026-05-22",
-    followUpMode: "WhatsApp",
-    attempts: 1,
-    quotationAmount: "₹98,000",
-    selectedPackage: "Kerala Honeymoon Package",
-    quotationStatus: "approval_pending",
-    approvalBy: "Sales Team Leader - South",
-    sentVia: "Not Sent",
-    lossReason: "",
-    remarks: "Kerala package quotation prepared and waiting for approval.",
-  },
-  {
-    id: "L003",
-    client: "Dev Patel",
-    phone: "9876543212",
-    email: "dev@test.com",
-    destination: "Goa Package",
-    travelDate: "2026-06-05",
-    travellers: 5,
-    budget: "₹85K",
-    source: "Campaign",
-    priority: "Urgent",
-    assignedBy: "Sales Team Leader - West",
-    stage: "follow_up",
-    status: "not_reachable",
-    lastContact: "2026-05-20",
-    nextFollowUp: "2026-05-20",
-    followUpMode: "Call",
-    attempts: 3,
-    quotationAmount: "",
-    selectedPackage: "",
-    quotationStatus: "not_prepared",
-    approvalBy: "",
-    sentVia: "Not Sent",
-    lossReason: "",
-    remarks: "Client not reachable. Try again today evening.",
-  },
-  {
-    id: "L004",
-    client: "Sneha Rao",
-    phone: "9876543213",
-    email: "sneha@test.com",
-    destination: "Rajasthan Tour",
-    travelDate: "2026-07-01",
-    travellers: 3,
-    budget: "₹3.5L",
-    source: "Field Visit",
-    priority: "High",
-    assignedBy: "Sales Team Leader - North",
-    stage: "converted",
-    status: "converted",
-    lastContact: "2026-05-19",
-    nextFollowUp: "",
-    followUpMode: "Call",
-    attempts: 4,
-    quotationAmount: "₹3,48,000",
-    selectedPackage: "Rajasthan Heritage Tour",
-    quotationStatus: "sent",
-    approvalBy: "Sales Team Leader - North",
-    sentVia: "WhatsApp",
-    lossReason: "",
-    remarks: "Client confirmed booking.",
-  },
-];
+// READY_PACKAGES is now fetched from the API — replaced below with dynamic state
 
 const INITIAL_ACTIVITIES: Activity[] = [
   {
@@ -338,15 +206,134 @@ const formatText = (value: string) => {
   return value.replace(/_/g, " ").toUpperCase();
 };
 
+const mapApiLeadToSSE = (rawLead: any): Lead => {
+  const base = mapApiLead(rawLead);
+  return {
+    id: base.id,
+    client: base.client,
+    phone: base.phone,
+    email: base.email,
+    destination: base.dest,
+    travelDate: base.travelDate as string,
+    travellers: Number(base.travellers) || 0,
+    budget: base.budget,
+    source: base.source,
+    priority: (base.priority as Lead['priority']) || 'Normal',
+    assignedBy: base.assignedLeader || '—',
+    stage: (base.stage as LeadStage) || 'enquiry_created',
+    status: (base.status as LeadStatus) || 'new',
+    lastContact: base.dateValue,
+    nextFollowUp: base.nextFollowUp || '',
+    followUpMode: 'Call' as FollowUpMode,
+    attempts: 0,
+    quotationAmount: '',
+    selectedPackage: '',
+    quotationStatus: 'not_prepared',
+    approvalBy: '',
+    sentVia: 'Not Sent',
+    lossReason: '',
+    remarks: base.remarks,
+    aiGenerated: base.aiGenerated,
+  };
+};
+
 export function SalesSupportExecutive() {
-  const [leads, setLeads] = useState<Lead[]>(INITIAL_LEADS);
+  const { user } = useAuth() as any;
+
+  const [leads, setLeads] = useState<Lead[]>([]);
   const [activities, setActivities] = useState<Activity[]>(INITIAL_ACTIVITIES);
+  const [isLoading, setIsLoading] = useState(true);
+  const [fetchError, setFetchError] = useState('');
+
+  // ── Dynamic packages from API ─────────────────────────────────────────────
+  const [readyPackages, setReadyPackages] = useState<ReadyPackage[]>([]);
+  const [followUpModes, setFollowUpModes] = useState<string[]>(['Call', 'WhatsApp', 'Email', 'Meeting']);
+
+  const fetchLeads = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setFetchError('');
+      // Filter leads for this user only if user id is available
+      const userId = user?.id ?? user?.user_id;
+      const data = userId
+        ? await getAllLeads({ user_id: userId })
+        : await getAllLeads();
+      const rawList: any[] = Array.isArray(data) ? data : Array.isArray(data?.leads) ? data.leads : Array.isArray(data?.data) ? data.data : [];
+      setLeads(rawList.map(mapApiLeadToSSE));
+    } catch (err: any) {
+      const msg = err?.response?.data?.message;
+      setFetchError(msg || 'Failed to load leads. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user]);
+
+  const fetchPackages = useCallback(async () => {
+    try {
+      const data = await getAllPackages();
+      const rawList: any[] = Array.isArray(data) ? data : Array.isArray(data?.packages) ? data.packages : Array.isArray(data?.data) ? data.data : [];
+      setReadyPackages(rawList.map((p: any) => {
+        const mapped = mapApiPackage(p);
+        return {
+          id:          mapped.id,
+          title:       mapped.title,
+          destination: mapped.destination,
+          duration:    `${mapped.days} Days / ${mapped.nights} Nights`,
+          price:       mapped.price,
+        };
+      }));
+    } catch {
+      // keep fallback empty — quotation form still works manually
+    }
+  }, []);
+
+  const fetchModes = useCallback(async () => {
+    try {
+      const data = await getFollowUpModes();
+      const modes: string[] = Array.isArray(data) ? data : Array.isArray(data?.modes) ? data.modes : Array.isArray(data?.data) ? data.data : [];
+      if (modes.length > 0) setFollowUpModes(modes);
+    } catch {
+      // keep hardcoded fallback
+    }
+  }, []);
+
+  const fetchActivities = useCallback(async () => {
+    try {
+      const userId = user?.id ?? user?.user_id;
+      if (!userId) return;
+      const data = await getRecentActivities(userId);
+      const rawList: any[] = Array.isArray(data) ? data : Array.isArray(data?.activities) ? data.activities : Array.isArray(data?.data) ? data.data : [];
+      if (rawList.length > 0) {
+        setActivities(rawList.map((a: any, i: number) => ({
+          id:     String(a.id ?? `A${i}`),
+          leadId: String(a.lead_id ?? ''),
+          title:  a.title ?? a.activity_type ?? 'Activity',
+          mode:   (a.follow_up_mode ?? a.mode ?? 'System') as Activity['mode'],
+          stage:  (a.stage ?? 'enquiry_created') as LeadStage,
+          status: (a.status ?? 'new') as LeadStatus,
+          note:   a.note ?? a.follow_up_note ?? '',
+          date:   a.date ?? (a.created_at ? new Date(a.created_at).toISOString().split('T')[0] : today),
+          time:   a.time ?? (a.created_at ? new Date(a.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''),
+        })));
+      }
+    } catch {
+      // keep hardcoded fallback activities
+    }
+  }, [user]);
+
+  useEffect(() => {
+    fetchLeads();
+    fetchPackages();
+    fetchModes();
+    fetchActivities();
+  }, [fetchLeads, fetchPackages, fetchModes, fetchActivities]);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [stageFilter, setStageFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
-  const [dateFilter, setDateFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   const [viewLead, setViewLead] = useState<Lead | null>(null);
   const [quotationLead, setQuotationLead] = useState<Lead | null>(null);
@@ -358,6 +345,8 @@ export function SalesSupportExecutive() {
     status: "contacted" as LeadStatus,
     nextFollowUp: "",
     note: "",
+    selectedPackage: "",
+    quotationAmount: "",
   });
 
   const [quotationForm, setQuotationForm] = useState({
@@ -389,7 +378,10 @@ export function SalesSupportExecutive() {
       statusFilter === "all" || lead.status === statusFilter;
     const matchesPriority =
       priorityFilter === "all" || lead.priority === priorityFilter;
-    const matchesDate = !dateFilter || lead.nextFollowUp === dateFilter;
+    const matchesDate = (!dateFrom && !dateTo) ||
+      (dateFrom && dateTo ? lead.dateValue >= dateFrom && lead.dateValue <= dateTo :
+       dateFrom ? lead.dateValue >= dateFrom :
+       lead.dateValue <= dateTo);
 
     return (
       matchesSearch &&
@@ -458,7 +450,18 @@ export function SalesSupportExecutive() {
       status: lead.status,
       nextFollowUp: lead.nextFollowUp,
       note: "",
+      selectedPackage: lead.selectedPackage || "",
+      quotationAmount: lead.quotationAmount || "",
     });
+  };
+
+  const handlePackageSelectFollowUp = (packageTitle: string) => {
+    const pkg = readyPackages.find((p) => p.title === packageTitle);
+    setFollowUpForm((prev) => ({
+      ...prev,
+      selectedPackage: packageTitle,
+      quotationAmount: pkg?.price || prev.quotationAmount,
+    }));
   };
 
   const openConversion = (lead: Lead) => {
@@ -472,10 +475,7 @@ export function SalesSupportExecutive() {
   };
 
   const handlePackageSelect = (packageTitle: string) => {
-    const selectedPackage = READY_PACKAGES.find(
-      (pkg) => pkg.title === packageTitle
-    );
-
+    const selectedPackage = readyPackages.find((pkg) => pkg.title === packageTitle);
     setQuotationForm((prev) => ({
       ...prev,
       selectedPackage: packageTitle,
@@ -519,6 +519,12 @@ export function SalesSupportExecutive() {
       `${quotationForm.selectedPackage} quotation ${quotationForm.quotationAmount} sent to ${quotationForm.approvalBy} for approval.`
     );
 
+    updateLead(quotationLead.id, {
+      stage: 'quotation_approval',
+      status: 'approval_pending',
+      requirements: quotationForm.itineraryNote,
+    }).catch((err: any) => console.error('Failed to update quotation:', err));
+
     setQuotationLead(null);
   };
 
@@ -555,6 +561,11 @@ export function SalesSupportExecutive() {
       "quotation_sent",
       `${lead.selectedPackage} package and quotation shared with client via ${sentVia}.`
     );
+
+    updateLead(lead.id, {
+      status: 'quotation_sent',
+      stage: 'quotation_sent',
+    }).catch((err: any) => console.error('Failed to mark quotation sent:', err));
   };
 
   const saveFollowUp = () => {
@@ -578,6 +589,8 @@ export function SalesSupportExecutive() {
           attempts: lead.attempts + 1,
           lastContact: today,
           remarks: followUpForm.note || lead.remarks,
+          selectedPackage: followUpForm.selectedPackage || lead.selectedPackage,
+          quotationAmount: followUpForm.quotationAmount || lead.quotationAmount,
         };
       })
     );
@@ -593,6 +606,23 @@ export function SalesSupportExecutive() {
         : "follow_up",
       followUpForm.status,
       followUpForm.note || "Follow-up updated."
+    );
+
+    const newStage = followUpForm.status === 'converted' ? 'converted' : followUpForm.status === 'lost' ? 'lost' : 'follow_up';
+    // Use dedicated follow-up endpoint
+    updateLeadFollowUp(followUpLead.id, {
+      follow_up_mode:      followUpForm.mode,
+      lead_status:         followUpForm.status,
+      next_follow_up_date: followUpForm.nextFollowUp,
+      follow_up_note:      followUpForm.note,
+    }).catch(() =>
+      // Fallback to generic updateLead if new endpoint not available yet
+      updateLead(followUpLead.id, {
+        status:         followUpForm.status,
+        stage:          newStage,
+        follow_up_date: followUpForm.nextFollowUp,
+        requirements:   followUpForm.note,
+      }).catch((err: any) => console.error('Failed to update follow-up:', err))
     );
 
     setFollowUpLead(null);
@@ -644,6 +674,12 @@ export function SalesSupportExecutive() {
           : conversionForm.lossReason)
     );
 
+    updateLead(conversionLead.id, {
+      status: conversionForm.result,
+      stage: conversionForm.result,
+      requirements: conversionForm.note,
+    }).catch((err: any) => console.error('Failed to update conversion:', err));
+
     setConversionLead(null);
   };
 
@@ -673,12 +709,21 @@ export function SalesSupportExecutive() {
               />
             </div>
 
-            <input
-              type="date"
-              value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value)}
-              className="px-3 py-2 border border-border rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
-            />
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="px-3 py-2 border border-border rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
+              />
+              <span className="text-sm text-muted-foreground">to</span>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="px-3 py-2 border border-border rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
+              />
+            </div>
 
             <select
               value={stageFilter}
@@ -725,6 +770,13 @@ export function SalesSupportExecutive() {
             </select>
           </div>
         </div>
+
+        {fetchError && (
+          <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center justify-between">
+            <p className="text-sm text-amber-800">{fetchError}</p>
+            <button onClick={fetchLeads} className="text-xs px-3 py-1 bg-amber-600 text-white rounded-lg">Retry</button>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
@@ -831,8 +883,11 @@ export function SalesSupportExecutive() {
                       </td>
 
                       <td className="px-4 py-3">
-                        <p className="text-sm font-medium text-foreground">
+                        <p className="text-sm font-medium text-foreground flex items-center gap-1 flex-wrap">
                           {lead.client}
+                          {lead.aiGenerated && (
+                            <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-semibold">AI Extracted</span>
+                          )}
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {lead.phone}
@@ -914,6 +969,7 @@ export function SalesSupportExecutive() {
                             <Eye className="w-4 h-4" />
                           </button>
 
+                          {/* Package / Prepare Quote button — hidden for now, code kept for future use
                           <button
                             onClick={() => openQuotation(lead)}
                             className="p-2 rounded-lg hover:bg-amber-100 text-amber-700"
@@ -921,7 +977,9 @@ export function SalesSupportExecutive() {
                           >
                             <Package className="w-4 h-4" />
                           </button>
+                          */}
 
+                          {/* Share Package button — hidden for now, code kept for future use
                           <button
                             onClick={() =>
                               markQuotationSent(lead, "Email + WhatsApp")
@@ -931,6 +989,7 @@ export function SalesSupportExecutive() {
                           >
                             <Send className="w-4 h-4" />
                           </button>
+                          */}
 
                           <button
                             onClick={() => openFollowUp(lead)}
@@ -977,6 +1036,7 @@ export function SalesSupportExecutive() {
           onClose={() => setQuotationLead(null)}
           onSave={saveQuotation}
           onPackageSelect={handlePackageSelect}
+          packages={readyPackages}
           progress={getLeadProgress(quotationLead)}
         />
       )}
@@ -989,6 +1049,8 @@ export function SalesSupportExecutive() {
           onClose={() => setFollowUpLead(null)}
           onSave={saveFollowUp}
           progress={getLeadProgress(followUpLead)}
+          packages={readyPackages}
+          onPackageSelect={handlePackageSelectFollowUp}
         />
       )}
 
@@ -1023,6 +1085,7 @@ function QuotationModal({
   onSave,
   onPackageSelect,
   progress,
+  packages,
 }: {
   lead: Lead;
   form: {
@@ -1043,8 +1106,9 @@ function QuotationModal({
   onSave: () => void;
   onPackageSelect: (packageTitle: string) => void;
   progress: number;
+  packages: ReadyPackage[];
 }) {
-  const selectedPackage = READY_PACKAGES.find(
+  const selectedPackage = packages.find(
     (pkg) => pkg.title === form.selectedPackage
   );
 
@@ -1087,7 +1151,7 @@ function QuotationModal({
               className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
             >
               <option value="">Select ready-made package</option>
-              {READY_PACKAGES.map((pkg) => (
+              {packages.map((pkg) => (
                 <option key={pkg.id} value={pkg.title}>
                   {pkg.title} - {pkg.duration} - {pkg.price}
                 </option>
@@ -1122,6 +1186,7 @@ function QuotationModal({
               placeholder="₹1,24,500"
             />
 
+            {/* Send Approval To — hidden for now
             <div>
               <label className="text-sm text-muted-foreground mb-1 block">
                 Send Approval To
@@ -1141,6 +1206,7 @@ function QuotationModal({
                 <option>Sales Team Leader - West</option>
               </select>
             </div>
+            */}
           </div>
 
           <div className="mt-4">
@@ -1252,6 +1318,8 @@ function FollowUpModal({
   onClose,
   onSave,
   progress,
+  packages,
+  onPackageSelect,
 }: {
   lead: Lead;
   form: {
@@ -1259,6 +1327,8 @@ function FollowUpModal({
     status: LeadStatus;
     nextFollowUp: string;
     note: string;
+    selectedPackage: string;
+    quotationAmount: string;
   };
   setForm: React.Dispatch<
     React.SetStateAction<{
@@ -1266,12 +1336,18 @@ function FollowUpModal({
       status: LeadStatus;
       nextFollowUp: string;
       note: string;
+      selectedPackage: string;
+      quotationAmount: string;
     }>
   >;
   onClose: () => void;
   onSave: () => void;
   progress: number;
+  packages: ReadyPackage[];
+  onPackageSelect: (packageTitle: string) => void;
 }) {
+  const selectedPkg = packages.find((p) => p.title === form.selectedPackage);
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[92vh] overflow-hidden">
@@ -1297,11 +1373,52 @@ function FollowUpModal({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <Info label="Phone" value={lead.phone} />
             <Info label="Email" value={lead.email} />
-            <Info
-              label="Selected Package"
-              value={lead.selectedPackage || "Not selected"}
-            />
+            <Info label="Client Budget" value={lead.budget} />
             <Info label="Auto Progress" value={`${progress}%`} />
+          </div>
+
+          {/* Select Package */}
+          <div className="mb-4">
+            <label className="text-sm text-muted-foreground mb-1 block">
+              Select Package *
+            </label>
+            <select
+              value={form.selectedPackage}
+              onChange={(e) => onPackageSelect(e.target.value)}
+              className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#4b49ac]"
+            >
+              <option value="">Select ready-made package</option>
+              {packages.map((pkg) => (
+                <option key={pkg.id} value={pkg.title}>
+                  {pkg.title} - {pkg.duration} - {pkg.price}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Package preview card */}
+          {selectedPkg && (
+            <div className="mb-4 p-4 bg-[#f8fafc] rounded-lg border border-border">
+              <h4 className="font-semibold text-foreground">{selectedPkg.title}</h4>
+              <p className="text-sm text-muted-foreground">
+                {selectedPkg.destination} · {selectedPkg.duration}
+              </p>
+              <p className="text-sm font-semibold text-[#4b49ac] mt-1">
+                {selectedPkg.price}
+              </p>
+            </div>
+          )}
+
+          {/* Quotation Amount */}
+          <div className="mb-4">
+            <Input
+              label="Quotation Amount *"
+              value={form.quotationAmount}
+              onChange={(value) =>
+                setForm((prev) => ({ ...prev, quotationAmount: value }))
+              }
+              placeholder="₹1,24,500"
+            />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1580,8 +1697,11 @@ function ViewLeadDrawer({
       <div className="bg-white w-full max-w-lg h-full overflow-auto p-6">
         <div className="flex justify-between mb-6">
           <div>
-            <h3 className="text-xl font-semibold text-foreground">
+            <h3 className="text-xl font-semibold text-foreground flex items-center gap-2 flex-wrap">
               {lead.client}
+              {lead.aiGenerated && (
+                <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-semibold">AI Extracted</span>
+              )}
             </h3>
             <p className="text-sm text-muted-foreground">Lead ID: {lead.id}</p>
           </div>

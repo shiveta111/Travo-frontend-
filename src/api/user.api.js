@@ -69,3 +69,24 @@ export const uploadProfilePicture = async (file) => {
   return response.data;
 
 };
+
+/**
+ * GET SALES TEAM LEADERS
+ * GET /users/sales-team-leaders
+ *
+ * Returns the list of users who are Sales Team Leaders.
+ * Used in the Sales Team Leader page to populate the team members section.
+ */
+export const getSalesTeamLeaders = async () => {
+  const response = await api.get('/users/sales-team-leaders');
+  return response.data;
+};
+
+/**
+ * GET TEAM MEMBERS BY TEAM LEADER ID
+ * GET /users/by-team-leader/:leaderId
+ */
+export const getTeamMembersByLeader = async (leaderId) => {
+  const response = await api.get(`/users/by-team-leader/${leaderId}`);
+  return response.data;
+};

@@ -46,13 +46,24 @@ export const mapApiLead = (apiLead) => {
     source:         apiLead.source       ?? 'Field Visit',
     priority:       PRIORITY_TO_LABEL[apiLead.priority] ?? 'Normal',
     assignedLeader: apiLead.assigned_to  ?? 'Auto Assign Pending',
+    // Raw numeric user ID of the assigned team member (for matching with users API)
+    assignedToId:   apiLead.assigned_to ? Number(apiLead.assigned_to) : null,
+    // Assigned team leader ID
+    teamLeaderId:   apiLead.team_leader_id ? Number(apiLead.team_leader_id) : null,
     status:         apiLead.status       ?? 'new',
     sla:            apiLead.sla          ?? 'OK',
     date:           displayDate,
     dateValue,
+    // Keep legacy string assignedTo for backward compatibility (same as assignedLeader string)
+    assignedTo:     apiLead.assigned_to  ? String(apiLead.assigned_to) : '',
+    assigned:       apiLead.assigned_name ?? (apiLead.assigned_to ? String(apiLead.assigned_to) : '—'),
+    stage:          apiLead.stage        ?? 'new',
+    outcome:        apiLead.outcome      ?? 'pending',
     progress:       Number(apiLead.progress ?? 20),
     followUpDate:   apiLead.follow_up_date ?? '',
+    nextFollowUp:   apiLead.follow_up_date ?? '',
     remarks:        apiLead.requirements   ?? '',
+    aiGenerated:    apiLead.ai_generated == 1 || apiLead.ai_generated === true || apiLead.ai_generated === 'true',
   };
 };
 
@@ -110,5 +121,107 @@ export const createLead = async (formValues) => {
   };
 
   const response = await api.post('/leads/create', payload);
+  return response.data;
+};
+
+/**
+ * ASSIGN LEAD TO A TEAM MEMBER
+ * PUT /leads/update/:leadId
+ *
+ * @param {string|number} leadId         – lead ID to assign
+ * @param {number}        memberId       – ID of the field sales executive to assign to
+ * @param {string}        priority       – 'Low' | 'Normal' | 'High' | 'Urgent'
+ * @param {number}        [teamLeaderId] – ID of the team leader assigning the lead
+ */
+export const assignLead = async (leadId, memberId, priority = 'Normal', teamLeaderId = null) => {
+  const payload = {
+    assigned_to: memberId,
+    priority: PRIORITY_TO_NUMBER[priority] ?? 0,
+    Assigned_tl: teamLeaderId ? 1 : 0,
+    ...(teamLeaderId ? { team_leader_id: teamLeaderId } : {}),
+  };
+
+  const response = await api.put(`/leads/update/${leadId}`, payload);
+  return response.data;
+};
+
+/**
+ * UPDATE LEAD
+ * PUT /leads/update/:leadId
+ *
+ * @param {string|number} leadId  – lead ID
+ * @param {Object}        payload – fields to update
+ */
+export const updateLead = async (leadId, payload) => {
+  // Convert priority label → number if supplied as a UI label
+  const normalized = { ...payload };
+  if (normalized.priority && typeof normalized.priority === 'string') {
+    normalized.priority = PRIORITY_TO_NUMBER[normalized.priority] ?? 0;
+  }
+  const response = await api.put(`/leads/update/${leadId}`, normalized);
+  return response.data;
+};
+
+/**
+ * ASSIGN LEAD (new dedicated endpoint)
+ * PATCH /leads/assign
+ */
+export const assignLeadToUser = async (leadId, userId) => {
+  const response = await api.patch('/leads/assign', { lead_id: leadId, user_id: userId });
+  return response.data;
+};
+
+/**
+ * GET UNASSIGNED LEADS
+ * GET /leads/all?unassigned=true
+ */
+export const getUnassignedLeads = async () => {
+  const response = await api.get('/leads/all', { params: { unassigned: true } });
+  return response.data;
+};
+
+/**
+ * GET LEADS BY USER ID
+ * GET /leads/all?user_id=X
+ */
+export const getLeadsByUser = async (userId, extraFilters = {}) => {
+  const response = await api.get('/leads/all', { params: { user_id: userId, ...extraFilters } });
+  return response.data;
+};
+
+/**
+ * GET LEAD STATUSES
+ * GET /leads/leads-status
+ */
+export const getLeadStatuses = async () => {
+  const response = await api.get('/leads/leads-status');
+  return response.data;
+};
+
+/**
+ * UPDATE LEAD FOLLOW-UP
+ * PUT /leads/:id
+ * payload: { follow_up_mode, lead_status, next_follow_up_date, follow_up_note }
+ */
+export const updateLeadFollowUp = async (leadId, payload) => {
+  const response = await api.put(`/leads/${leadId}`, payload);
+  return response.data;
+};
+
+/**
+ * GET FOLLOW-UP MODES
+ * GET /leads/followup-modes
+ */
+export const getFollowUpModes = async () => {
+  const response = await api.get('/leads/followup-modes');
+  return response.data;
+};
+
+/**
+ * GET RECENT ACTIVITIES FOR A USER
+ * GET /leads/recent-activities/:userId
+ */
+export const getRecentActivities = async (userId) => {
+  const response = await api.get(`/leads/recent-activities/${userId}`);
   return response.data;
 };

@@ -1,19 +1,20 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Search,
   Plus,
   X,
   Save,
   Eye,
-  Send,
   MapPin,
   Hotel,
   CalendarDays,
   IndianRupee,
   Users,
-  Copy,
   Trash2,
+  RefreshCw,
 } from "lucide-react";
+import { getAllPackages, createPackage as apiCreatePackage, deletePackage as apiDeletePackage, mapApiPackage } from "../../api/packages.api";
+import { useAuth } from "../../auth/AuthContext";
 
 type DayPlan = {
   day: number;
@@ -42,144 +43,7 @@ type PackageItem = {
   dayPlans: DayPlan[];
 };
 
-const INITIAL_PACKAGES: PackageItem[] = [
-  {
-    id: "PKG001",
-    title: "Shimla Manali Family Tour",
-    destination: "Shimla - Manali",
-    category: "Family",
-    days: 6,
-    nights: 5,
-    price: "₹1,24,500",
-    hotelType: "3 Star Hotel",
-    transport: "Private Cab",
-    pax: 4,
-    status: "ready",
-    inclusions:
-      "Hotel stay, breakfast, private cab, sightseeing, toll taxes, parking.",
-    exclusions:
-      "Airfare/train fare, lunch, dinner, personal expenses, adventure activities.",
-    terms:
-      "50% advance required. Package price may change based on hotel availability.",
-    dayPlans: [
-      {
-        day: 1,
-        title: "Arrival in Shimla",
-        city: "Shimla",
-        activities:
-          "Pickup from Chandigarh and transfer to Shimla. Evening free for Mall Road.",
-        stay: "Shimla Hotel",
-        meals: "Breakfast",
-      },
-      {
-        day: 2,
-        title: "Shimla Local Sightseeing",
-        city: "Shimla",
-        activities: "Visit Kufri, Jakhu Temple, Ridge and Mall Road.",
-        stay: "Shimla Hotel",
-        meals: "Breakfast",
-      },
-      {
-        day: 3,
-        title: "Shimla to Manali",
-        city: "Manali",
-        activities:
-          "Drive to Manali via Kullu Valley. Visit Kullu shawl factory on the way.",
-        stay: "Manali Hotel",
-        meals: "Breakfast",
-      },
-      {
-        day: 4,
-        title: "Manali Local Sightseeing",
-        city: "Manali",
-        activities:
-          "Visit Hadimba Temple, Vashisht, Club House and Tibetan Monastery.",
-        stay: "Manali Hotel",
-        meals: "Breakfast",
-      },
-      {
-        day: 5,
-        title: "Solang Valley Visit",
-        city: "Manali",
-        activities:
-          "Visit Solang Valley. Optional adventure activities at own cost.",
-        stay: "Manali Hotel",
-        meals: "Breakfast",
-      },
-      {
-        day: 6,
-        title: "Departure",
-        city: "Chandigarh",
-        activities: "Checkout and drive back to Chandigarh.",
-        stay: "No Stay",
-        meals: "Breakfast",
-      },
-    ],
-  },
-  {
-    id: "PKG002",
-    title: "Kerala Honeymoon Package",
-    destination: "Munnar - Alleppey - Kochi",
-    category: "Honeymoon",
-    days: 5,
-    nights: 4,
-    price: "₹98,000",
-    hotelType: "4 Star Hotel + Houseboat",
-    transport: "Private Cab",
-    pax: 2,
-    status: "shared",
-    inclusions:
-      "Hotel stay, houseboat stay, breakfast, private cab and sightseeing.",
-    exclusions:
-      "Flights, lunch, dinner, personal expenses and monument entry fees.",
-    terms:
-      "Rooms are subject to availability. Houseboat category depends on final confirmation.",
-    dayPlans: [
-      {
-        day: 1,
-        title: "Arrival in Kochi and Transfer to Munnar",
-        city: "Munnar",
-        activities: "Pickup from Kochi airport and drive to Munnar.",
-        stay: "Munnar Hotel",
-        meals: "Breakfast",
-      },
-      {
-        day: 2,
-        title: "Munnar Sightseeing",
-        city: "Munnar",
-        activities:
-          "Visit Tea Museum, Mattupetty Dam, Echo Point and local market.",
-        stay: "Munnar Hotel",
-        meals: "Breakfast",
-      },
-      {
-        day: 3,
-        title: "Munnar to Alleppey",
-        city: "Alleppey",
-        activities: "Transfer to Alleppey and check in to houseboat.",
-        stay: "Houseboat",
-        meals: "Breakfast, Lunch, Dinner",
-      },
-      {
-        day: 4,
-        title: "Alleppey to Kochi",
-        city: "Kochi",
-        activities:
-          "Drive to Kochi. Visit Fort Kochi, Marine Drive and Jew Town.",
-        stay: "Kochi Hotel",
-        meals: "Breakfast",
-      },
-      {
-        day: 5,
-        title: "Departure",
-        city: "Kochi",
-        activities: "Checkout and airport drop.",
-        stay: "No Stay",
-        meals: "Breakfast",
-      },
-    ],
-  },
-];
+// Packages are loaded from the API — no static initialiser needed.
 
 const getStatusColor = (status: string) => {
   const map: Record<string, string> = {
@@ -192,7 +56,11 @@ const getStatusColor = (status: string) => {
 };
 
 export function SalesPackage() {
-  const [packages, setPackages] = useState<PackageItem[]>(INITIAL_PACKAGES);
+  const { user } = useAuth() as any;
+  const [packages, setPackages] = useState<PackageItem[]>([]);
+  const [pkgLoading, setPkgLoading] = useState(true);
+  const [pkgError, setPkgError] = useState("");
+  const [pkgSaving, setPkgSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -224,6 +92,39 @@ export function SalesPackage() {
       },
     ] as DayPlan[],
   });
+
+  const fetchPackages = useCallback(async () => {
+    try {
+      setPkgLoading(true);
+      setPkgError("");
+      const data = await getAllPackages();
+
+      // Handle all common backend response shapes
+      const rawList: any[] =
+        Array.isArray(data)                        ? data :
+        Array.isArray(data?.packages)              ? data.packages :
+        Array.isArray(data?.data)                  ? data.data :
+        Array.isArray(data?.data?.packages)        ? data.data.packages :
+        Array.isArray(data?.result)                ? data.result :
+        Array.isArray(data?.items)                 ? data.items :
+        Array.isArray(data?.package_list)          ? data.package_list :
+        Array.isArray(data?.data?.data)            ? data.data.data :
+        [];
+      setPackages(rawList.map((p: any) => mapApiPackage(p) as PackageItem));
+    } catch (err: any) {
+      const status = err?.response?.status;
+      if (status === 404) {
+        setPackages([]);
+      } else {
+        const msg = err?.response?.data?.message;
+        setPkgError(msg || "Failed to load packages. Please try again.");
+      }
+    } finally {
+      setPkgLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchPackages(); }, [fetchPackages]);
 
   const filteredPackages = packages.filter((pkg) => {
     const search = searchQuery.toLowerCase();
@@ -320,67 +221,66 @@ export function SalesPackage() {
     });
   };
 
-  const savePackage = () => {
+  const savePackage = async () => {
     if (!packageForm.title || !packageForm.destination || !packageForm.price) {
       alert("Please fill package title, destination and price.");
       return;
     }
-
-    const newPackage: PackageItem = {
-      id: `PKG${String(packages.length + 1).padStart(3, "0")}`,
-      title: packageForm.title,
-      destination: packageForm.destination,
-      category: packageForm.category,
-      days: Number(packageForm.days),
-      nights: Number(packageForm.nights),
-      price: packageForm.price,
-      hotelType: packageForm.hotelType,
-      transport: packageForm.transport,
-      pax: Number(packageForm.pax),
-      status: "ready",
-      inclusions: packageForm.inclusions,
-      exclusions: packageForm.exclusions,
-      terms: packageForm.terms,
-      dayPlans: packageForm.dayPlans,
-    };
-
-    setPackages((prev) => [newPackage, ...prev]);
-    setShowPackageModal(false);
-    resetForm();
+    setPkgSaving(true);
+    try {
+      const createdBy = user?.id ?? user?.user_id ?? null;
+      const res = await apiCreatePackage(packageForm, createdBy);
+      // Backend returns the created package — map it to our shape
+      const raw = res?.package ?? res?.data ?? res;
+      const saved: PackageItem = raw?.id
+        ? (mapApiPackage(raw) as PackageItem)
+        : {
+            id: String(raw?.id ?? `PKG${Date.now()}`),
+            title: packageForm.title,
+            destination: packageForm.destination,
+            category: packageForm.category,
+            days: Number(packageForm.days),
+            nights: Number(packageForm.nights),
+            price: packageForm.price,
+            hotelType: packageForm.hotelType,
+            transport: packageForm.transport,
+            pax: Number(packageForm.pax),
+            status: "ready",
+            inclusions: packageForm.inclusions,
+            exclusions: packageForm.exclusions,
+            terms: packageForm.terms,
+            dayPlans: packageForm.dayPlans,
+          };
+      setPackages((prev) => [saved, ...prev]);
+      setShowPackageModal(false);
+      resetForm();
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || "Failed to save package. Please try again.";
+      alert(msg);
+    } finally {
+      setPkgSaving(false);
+    }
   };
 
-  const duplicatePackage = (pkg: PackageItem) => {
-    const copied: PackageItem = {
-      ...pkg,
-      id: `PKG${String(packages.length + 1).padStart(3, "0")}`,
-      title: `${pkg.title} Copy`,
-      status: "draft",
-    };
-
-    setPackages((prev) => [copied, ...prev]);
-  };
-
-  const markShared = (pkg: PackageItem) => {
-    setPackages((prev) =>
-      prev.map((item) =>
-        item.id === pkg.id
-          ? {
-              ...item,
-              status: "shared",
-            }
-          : item
-      )
-    );
-  };
-
-  const deletePackage = (id: string) => {
+  const deletePackage = async (id: string) => {
     const confirmDelete = window.confirm(
       "Are you sure you want to delete this package?"
     );
-
     if (!confirmDelete) return;
-
+    // Optimistic removal — revert on failure
     setPackages((prev) => prev.filter((pkg) => pkg.id !== id));
+    try {
+      await apiDeletePackage(id);
+    } catch (err: any) {
+      const status = err?.response?.status;
+      if (status !== 404) {
+        // Revert optimistic removal only for real errors
+        fetchPackages();
+        const msg = err?.response?.data?.message || "Failed to delete package.";
+        alert(msg);
+      }
+      // 404 = already deleted on server, optimistic removal is correct
+    }
   };
 
   return (
@@ -435,6 +335,16 @@ export function SalesPackage() {
             </select>
 
             <button
+              onClick={fetchPackages}
+              disabled={pkgLoading}
+              title="Refresh packages"
+              className="flex items-center gap-2 px-4 py-2 border border-border bg-white rounded-lg hover:bg-sidebar-accent transition-colors disabled:opacity-60"
+            >
+              <RefreshCw className={`w-4 h-4 ${pkgLoading ? "animate-spin" : ""}`} />
+              <span className="text-sm">{pkgLoading ? "Loading…" : "Refresh"}</span>
+            </button>
+
+            <button
               onClick={() => setShowPackageModal(true)}
               className="flex items-center gap-2 px-4 py-2 bg-[#4b49ac] text-white rounded-lg hover:bg-[#4b49ac]/90"
             >
@@ -460,6 +370,18 @@ export function SalesPackage() {
         <StatCard title="Drafts" value={stats.draft} subtitle="Need completion" />
       </div>
 
+      {pkgError && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between">
+          <p className="text-sm text-red-800">{pkgError}</p>
+          <button
+            onClick={fetchPackages}
+            className="ml-4 text-xs px-3 py-1 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       <div className="bg-white rounded-lg border border-border shadow-sm overflow-hidden">
         <div className="p-4 border-b border-border">
           <h3 className="font-semibold text-foreground">Package Library</h3>
@@ -469,6 +391,15 @@ export function SalesPackage() {
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 p-4">
+          {pkgLoading && packages.length === 0 && (
+            <div className="xl:col-span-2 flex items-center justify-center gap-2 py-12 text-muted-foreground">
+              <svg className="animate-spin w-5 h-5 text-[#4b49ac]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+              </svg>
+              <span className="text-sm">Loading packages…</span>
+            </div>
+          )}
           {filteredPackages.map((pkg) => (
             <div
               key={pkg.id}
@@ -537,22 +468,6 @@ export function SalesPackage() {
                 </button>
 
                 <button
-                  onClick={() => markShared(pkg)}
-                  className="flex items-center gap-1 px-3 py-2 rounded-lg bg-[#4b49ac] text-white text-sm hover:bg-[#4b49ac]/90"
-                >
-                  <Send className="w-4 h-4" />
-                  Share
-                </button>
-
-                <button
-                  onClick={() => duplicatePackage(pkg)}
-                  className="flex items-center gap-1 px-3 py-2 rounded-lg border border-border text-sm hover:bg-sidebar-accent"
-                >
-                  <Copy className="w-4 h-4" />
-                  Duplicate
-                </button>
-
-                <button
                   onClick={() => deletePackage(pkg.id)}
                   className="flex items-center gap-1 px-3 py-2 rounded-lg border border-red-200 text-red-600 text-sm hover:bg-red-50"
                 >
@@ -580,6 +495,7 @@ export function SalesPackage() {
             resetForm();
           }}
           onSave={savePackage}
+          isSaving={pkgSaving}
           generateDayPlans={generateDayPlans}
           updateDayPlan={updateDayPlan}
         />
@@ -589,8 +505,6 @@ export function SalesPackage() {
         <PackageViewDrawer
           viewPackage={viewPackage}
           onClose={() => setViewPackage(null)}
-          onShare={() => markShared(viewPackage)}
-          onDuplicate={() => duplicatePackage(viewPackage)}
         />
       )}
     </div>
@@ -602,6 +516,7 @@ function PackageCreateModal({
   setPackageForm,
   onClose,
   onSave,
+  isSaving = false,
   generateDayPlans,
   updateDayPlan,
 }: {
@@ -639,6 +554,7 @@ function PackageCreateModal({
   >;
   onClose: () => void;
   onSave: () => void;
+  isSaving?: boolean;
   generateDayPlans: () => void;
   updateDayPlan: (
     index: number,
@@ -895,10 +811,18 @@ function PackageCreateModal({
 
           <button
             onClick={onSave}
-            className="flex items-center gap-2 px-4 py-2 bg-[#4b49ac] text-white rounded-lg text-sm hover:bg-[#4b49ac]/90"
+            disabled={isSaving}
+            className="flex items-center gap-2 px-4 py-2 bg-[#4b49ac] text-white rounded-lg text-sm hover:bg-[#4b49ac]/90 disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            <Save className="w-4 h-4" />
-            Save Package
+            {isSaving ? (
+              <svg className="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+              </svg>
+            ) : (
+              <Save className="w-4 h-4" />
+            )}
+            {isSaving ? "Saving…" : "Save Package"}
           </button>
         </div>
       </div>
@@ -909,13 +833,9 @@ function PackageCreateModal({
 function PackageViewDrawer({
   viewPackage,
   onClose,
-  onShare,
-  onDuplicate,
 }: {
   viewPackage: PackageItem;
   onClose: () => void;
-  onShare: () => void;
-  onDuplicate: () => void;
 }) {
   return (
     <div className="fixed inset-0 bg-black/50 flex justify-end z-50">
@@ -978,23 +898,6 @@ function PackageViewDrawer({
         <DetailBlock title="Exclusions" value={viewPackage.exclusions} />
         <DetailBlock title="Terms & Conditions" value={viewPackage.terms} />
 
-        <div className="grid grid-cols-2 gap-3 mt-6">
-          <button
-            onClick={onShare}
-            className="flex items-center justify-center gap-2 px-4 py-2 bg-[#4b49ac] text-white rounded-lg text-sm"
-          >
-            <Send className="w-4 h-4" />
-            Share Package
-          </button>
-
-          <button
-            onClick={onDuplicate}
-            className="flex items-center justify-center gap-2 px-4 py-2 border border-border rounded-lg text-sm"
-          >
-            <Copy className="w-4 h-4" />
-            Duplicate
-          </button>
-        </div>
       </div>
     </div>
   );
